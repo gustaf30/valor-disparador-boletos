@@ -2,6 +2,7 @@ import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import { EventEmitter } from 'events';
 import path from 'path';
 import { WhatsAppGroup, WhatsAppConnectionState } from '../shared/types';
+import { getChromePath } from './chrome-path';
 
 export class WhatsAppClient extends EventEmitter {
   private client: Client;
@@ -12,13 +13,26 @@ export class WhatsAppClient extends EventEmitter {
   constructor(dataPath: string) {
     super();
 
+    const chromePath = getChromePath();
+    console.log('Using Chrome at:', chromePath);
+
     this.client = new Client({
       authStrategy: new LocalAuth({
         dataPath: path.join(dataPath, 'whatsapp-session'),
       }),
       puppeteer: {
+        executablePath: chromePath,
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-software-rasterizer',
+          '--no-first-run',
+          '--disable-blink-features=AutomationControlled',
+        ],
       },
     });
 

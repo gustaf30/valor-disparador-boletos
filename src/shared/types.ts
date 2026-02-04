@@ -51,8 +51,10 @@ export const IPC_CHANNELS = {
   WHATSAPP_READY: 'whatsapp:ready',
   WHATSAPP_DISCONNECTED: 'whatsapp:disconnected',
   WHATSAPP_AUTH_FAILURE: 'whatsapp:auth-failure',
+  WHATSAPP_INIT_ERROR: 'whatsapp:init-error',
   WHATSAPP_GET_GROUPS: 'whatsapp:get-groups',
   WHATSAPP_GET_STATUS: 'whatsapp:get-status',
+  WHATSAPP_GET_INIT_ERROR: 'whatsapp:get-init-error',
   WHATSAPP_LOGOUT: 'whatsapp:logout',
 
   // Files

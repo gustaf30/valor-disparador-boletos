@@ -23,6 +23,7 @@ declare global {
       getGroupPath: (groupName: string) => Promise<string>;
       getWhatsAppGroups: () => Promise<WhatsAppGroup[]>;
       getWhatsAppStatus: () => Promise<'connected' | 'connecting' | 'disconnected' | 'error'>;
+      getInitError: () => Promise<string | null>;
       logout: () => Promise<void>;
       openFile: (filePath: string) => Promise<string>;
       sendAll: () => Promise<SendProgress>;
@@ -30,6 +31,7 @@ declare global {
       onWhatsAppReady: (callback: () => void) => () => void;
       onWhatsAppDisconnected: (callback: () => void) => () => void;
       onWhatsAppAuthFailure: (callback: (msg: string) => void) => () => void;
+      onWhatsAppInitError: (callback: (msg: string) => void) => () => void;
       onSendProgress: (callback: (progress: SendProgress) => void) => () => void;
       onSendComplete: (callback: (progress: SendProgress) => void) => () => void;
     };
@@ -37,6 +39,23 @@ declare global {
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+function formatInitError(error: string): string {
+  // Traduzir erros comuns do Puppeteer/Chrome para português
+  if (error.includes('Failed to launch the browser process') ||
+      error.includes('spawn') ||
+      error.includes('ENOENT') ||
+      error.includes('4294967295')) {
+    return 'Não foi possível iniciar o navegador Chrome. Verifique se o Google Chrome está instalado corretamente no seu computador.';
+  }
+  if (error.includes('Chrome') && error.includes('not found')) {
+    return 'Google Chrome não encontrado. Por favor, instale o Google Chrome para usar este aplicativo.';
+  }
+  if (error.includes('timeout')) {
+    return 'Tempo esgotado ao iniciar o navegador. Tente fechar outros programas e reiniciar o aplicativo.';
+  }
+  return error;
+}
 
 function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
@@ -123,7 +142,13 @@ function App() {
 
     const unsubAuthFailure = window.electronAPI.onWhatsAppAuthFailure((msg) => {
       setConnectionStatus('error');
-      setErrorMessage(msg);
+      setErrorMessage(formatInitError(msg));
+      setQrCode(null);
+    });
+
+    const unsubInitError = window.electronAPI.onWhatsAppInitError((msg) => {
+      setConnectionStatus('error');
+      setErrorMessage(formatInitError(msg));
       setQrCode(null);
     });
 
@@ -158,6 +183,11 @@ function App() {
         }
       } else if (status === 'error') {
         setConnectionStatus('error');
+        // Buscar mensagem de erro se houver
+        const initErr = await window.electronAPI.getInitError();
+        if (initErr) {
+          setErrorMessage(formatInitError(initErr));
+        }
       } else if (status === 'disconnected') {
         setConnectionStatus('disconnected');
       }
@@ -169,6 +199,7 @@ function App() {
       unsubReady();
       unsubDisconnected();
       unsubAuthFailure();
+      unsubInitError();
       unsubProgress();
       unsubComplete();
     };
@@ -275,6 +306,16 @@ function App() {
           }
         }}
       />
+
+      {connectionStatus === 'error' && !qrCode && (
+        <div className="error-panel">
+          <h3>Erro ao inicializar</h3>
+          <p>{errorMessage || 'Ocorreu um erro ao conectar ao WhatsApp.'}</p>
+          <p className="error-hint">
+            Certifique-se de que o Google Chrome está instalado e tente reiniciar o aplicativo.
+          </p>
+        </div>
+      )}
 
       {qrCode && connectionStatus !== 'connected' && (
         <QRCode qrData={qrCode} />

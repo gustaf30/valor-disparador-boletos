@@ -245,6 +245,55 @@ body {
   font-size: 13px;
 }
 
+/* ===== Error Panel (Critical Errors) ===== */
+.error-panel {
+  background: var(--color-surface);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-8);
+  margin-bottom: var(--space-6);
+  text-align: center;
+  animation: fade-in-up 0.3s ease-out both;
+}
+
+.error-panel h3 {
+  color: var(--color-error);
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.error-panel h3::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--color-error);
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.error-panel p {
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: var(--space-3);
+}
+
+.error-panel .error-hint {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  background: var(--color-bg);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-4);
+}
+
 .status-current-group {
   font-size: 13px;
   color: var(--color-text-secondary);

@@ -29,6 +29,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.WHATSAPP_GET_GROUPS),
   getWhatsAppStatus: (): Promise<WhatsAppConnectionState> =>
     ipcRenderer.invoke(IPC_CHANNELS.WHATSAPP_GET_STATUS),
+  getInitError: (): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.WHATSAPP_GET_INIT_ERROR),
   logout: (): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.WHATSAPP_LOGOUT),
 
@@ -58,6 +60,12 @@ const api = {
     const handler = (_: Electron.IpcRendererEvent, msg: string) => callback(msg);
     ipcRenderer.on(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, handler);
+  },
+
+  onWhatsAppInitError: (callback: IpcCallback<string>) => {
+    const handler = (_: Electron.IpcRendererEvent, msg: string) => callback(msg);
+    ipcRenderer.on(IPC_CHANNELS.WHATSAPP_INIT_ERROR, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_INIT_ERROR, handler);
   },
 
   onSendProgress: (callback: IpcCallback<SendProgress>) => {

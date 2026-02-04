@@ -8,6 +8,7 @@ import fs from 'fs';
 let mainWindow: BrowserWindow | null = null;
 let whatsappClient: WhatsAppClient | null = null;
 let fileHandler: FileHandler | null = null;
+let initError: string | null = null;
 
 // Mapa de arquivos copiados para originais (copiedPath -> originalPath)
 const fileOriginalMap = new Map<string, string>();
@@ -80,10 +81,19 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+
+    // Verificar se houve erro na criação do cliente
+    if (initError) {
+      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_INIT_ERROR, initError);
+      return;
+    }
+
     // Inicializar WhatsApp apenas quando renderer está pronto para receber eventos
     whatsappClient?.initialize().catch((error) => {
       console.error('WhatsApp initialization failed:', error);
-      // O evento auth_failure já é emitido pelo WhatsAppClient
+      const errorMsg = error instanceof Error ? error.message : 'Erro ao inicializar WhatsApp';
+      initError = errorMsg;
+      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_INIT_ERROR, errorMsg);
     });
   });
 
@@ -153,7 +163,12 @@ function setupIPC(config: Config): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.WHATSAPP_GET_STATUS, (): WhatsAppConnectionState => {
+    if (initError) return 'error';
     return whatsappClient?.getConnectionState() ?? 'disconnected';
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WHATSAPP_GET_INIT_ERROR, (): string | null => {
+    return initError ?? whatsappClient?.getLastError() ?? null;
   });
 
   ipcMain.handle(IPC_CHANNELS.WHATSAPP_LOGOUT, async () => {
@@ -300,23 +315,28 @@ app.whenReady().then(async () => {
 
   fileHandler = new FileHandler(config.boletosFolder);
 
-  whatsappClient = new WhatsAppClient(app.getPath('userData'));
+  try {
+    whatsappClient = new WhatsAppClient(app.getPath('userData'));
 
-  whatsappClient.on('qr', (qr: string) => {
-    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_QR, qr);
-  });
+    whatsappClient.on('qr', (qr: string) => {
+      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_QR, qr);
+    });
 
-  whatsappClient.on('ready', () => {
-    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_READY);
-  });
+    whatsappClient.on('ready', () => {
+      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_READY);
+    });
 
-  whatsappClient.on('disconnected', () => {
-    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_DISCONNECTED);
-  });
+    whatsappClient.on('disconnected', () => {
+      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_DISCONNECTED);
+    });
 
-  whatsappClient.on('auth_failure', (msg: string) => {
-    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, msg);
-  });
+    whatsappClient.on('auth_failure', (msg: string) => {
+      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, msg);
+    });
+  } catch (error) {
+    initError = error instanceof Error ? error.message : 'Erro ao criar cliente WhatsApp';
+    console.error('Failed to create WhatsApp client:', error);
+  }
 
   setupIPC(config);
   createWindow();
