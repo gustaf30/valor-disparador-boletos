@@ -1057,6 +1057,9 @@ body {
 .search-input-wrapper {
   position: relative;
   margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .search-input-wrapper .search-icon {
@@ -1068,10 +1071,17 @@ body {
   height: 16px;
   color: var(--color-text-muted);
   pointer-events: none;
+  z-index: 1;
 }
 
 .search-input-wrapper input {
   padding-left: 38px;
+  flex: 1;
+}
+
+.search-input-wrapper .refresh-btn {
+  flex-shrink: 0;
+  padding: var(--space-2);
 }
 
 /* ===== New Group Form ===== */
@@ -1398,6 +1408,42 @@ body {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+}
+
+/* ===== GroupMapper Loading/Error States ===== */
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  min-height: 200px;
+  color: var(--color-muted);
+}
+
+.loading-state .spinner {
+  animation: spin 1s linear infinite;
+  color: var(--color-primary);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-state {
+  color: var(--color-warning);
+}
+
+.error-state .warning-icon {
+  width: 24px;
+  height: 24px;
 }
 
 /* ===== Accessibility: Reduced Motion ===== */

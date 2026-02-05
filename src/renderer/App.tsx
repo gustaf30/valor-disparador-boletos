@@ -72,28 +72,8 @@ function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const refreshGroups = useCallback(async () => {
-    if (!window.electronAPI) return;
-    try {
-      const scanned = await window.electronAPI.scanBoletos();
-      setGroups(scanned);
-    } catch (error) {
-      console.error('Failed to scan boletos:', error);
-    }
-  }, []);
-
-  const fetchWhatsAppGroups = useCallback(async () => {
-    if (!window.electronAPI) return;
-    try {
-      const waGroups = await window.electronAPI.getWhatsAppGroups();
-      setWhatsappGroups(waGroups);
-      return waGroups;
-    } catch (error) {
-      console.error('Failed to fetch WhatsApp groups:', error);
-      return [];
-    }
-  }, []);
-
+  // Auto-mapeia pastas com grupos WhatsApp de mesmo nome
+  // Não chama refreshGroups para evitar dependência circular
   const autoMapGroups = useCallback(async (folders: GroupStatus[], waGroups: WhatsAppGroup[]) => {
     let anyMapped = false;
     for (const folder of folders) {
@@ -108,9 +88,41 @@ function App() {
       }
     }
     if (anyMapped) {
-      await refreshGroups();
+      // Apenas re-escaneia boletos, sem chamar refreshGroups (evita loop)
+      const updated = await window.electronAPI.scanBoletos();
+      setGroups(updated);
     }
-  }, [refreshGroups]);
+  }, []); // Sem dependências externas
+
+  const fetchWhatsAppGroups = useCallback(async () => {
+    if (!window.electronAPI) return;
+    try {
+      const waGroups = await window.electronAPI.getWhatsAppGroups();
+      setWhatsappGroups(waGroups);
+      return waGroups;
+    } catch (error) {
+      console.error('Failed to fetch WhatsApp groups:', error);
+      return [];
+    }
+  }, []);
+
+  const refreshGroups = useCallback(async () => {
+    if (!window.electronAPI) return;
+    try {
+      const [scanned, waGroups] = await Promise.all([
+        window.electronAPI.scanBoletos(),
+        window.electronAPI.getWhatsAppGroups()
+      ]);
+      setGroups(scanned);
+      setWhatsappGroups(waGroups);
+      // Auto-mapear novas pastas quando conectado
+      if (connectionStatus === 'connected' && waGroups.length > 0) {
+        await autoMapGroups(scanned, waGroups);
+      }
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    }
+  }, [connectionStatus, autoMapGroups]);
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -204,6 +216,17 @@ function App() {
       unsubComplete();
     };
   }, [refreshGroups, fetchWhatsAppGroups, autoMapGroups]);
+
+  // Polling para detectar novas pastas e auto-mapear
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return;
+
+    const interval = setInterval(() => {
+      refreshGroups();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [connectionStatus, refreshGroups]);
 
   const handleAddFiles = async (groupName: string) => {
     try {
@@ -352,7 +375,7 @@ function App() {
       {mapperOpen && selectedGroup && (
         <GroupMapper
           folderName={selectedGroup}
-          whatsappGroups={whatsappGroups}
+          onFetchGroups={fetchWhatsAppGroups}
           onSave={handleSaveMapping}
           onCancel={() => {
             setMapperOpen(false);
