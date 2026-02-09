@@ -27,7 +27,7 @@ function getStatusMessage(progress: SendProgress): string {
   }
 }
 
-export function SendButton({ totalFiles, disabled, isSending, progress, onClick }: SendButtonProps) {
+export const SendButton = React.memo(function SendButton({ totalFiles, disabled, isSending, progress, onClick }: SendButtonProps) {
   const percentage = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
   const isComplete = progress?.status === 'complete';
 
@@ -65,7 +65,7 @@ export function SendButton({ totalFiles, disabled, isSending, progress, onClick 
       {isSending && progress && (
         <div className="progress-section">
           <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${percentage}%` }} />
+            <div className="progress-fill" style={{ transform: `scaleX(${percentage / 100})` }} />
           </div>
           <p className="progress-text">
             {getStatusMessage(progress)} ({progress.sent}/{progress.total})
@@ -88,4 +88,4 @@ export function SendButton({ totalFiles, disabled, isSending, progress, onClick 
       )}
     </div>
   );
-}
+});

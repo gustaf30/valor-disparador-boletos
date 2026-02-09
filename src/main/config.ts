@@ -19,7 +19,7 @@ export function loadConfig(configPath: string, documentsPath: string): Config {
       const data = fs.readFileSync(configPath, 'utf-8');
       const loaded = JSON.parse(data);
 
-      // Migration: message -> messageSingular/messagePlural
+      // Migração: message -> messageSingular/messagePlural
       if (loaded.message && !loaded.messageSingular) {
         loaded.messageSingular = loaded.message;
         loaded.messagePlural = loaded.message;
@@ -29,7 +29,7 @@ export function loadConfig(configPath: string, documentsPath: string): Config {
       return { ...getDefaultConfig(documentsPath), ...loaded };
     }
   } catch (error) {
-    console.error('Error loading config:', error);
+    console.error('Erro ao carregar config:', error);
   }
   return getDefaultConfig(documentsPath);
 }
@@ -42,6 +42,6 @@ export function saveConfig(configPath: string, config: Config): void {
     }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   } catch (error) {
-    console.error('Error saving config:', error);
+    console.error('Erro ao salvar config:', error);
   }
 }

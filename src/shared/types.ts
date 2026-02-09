@@ -1,6 +1,6 @@
 export interface Config {
   boletosFolder: string;
-  groups: Record<string, string>; // folder name -> whatsapp group id
+  groups: Record<string, string>; // nome da pasta -> id do grupo whatsapp
   messageSingular: string;
   messagePlural: string;
   delayBetweenSends: number;
@@ -37,7 +37,7 @@ export interface AddFilesResult {
   errors: string[];
 }
 
-// IPC Channel names
+// Canais IPC
 export const IPC_CHANNELS = {
   // WhatsApp
   WHATSAPP_QR: 'whatsapp:qr',
@@ -50,24 +50,25 @@ export const IPC_CHANNELS = {
   WHATSAPP_GET_INIT_ERROR: 'whatsapp:get-init-error',
   WHATSAPP_LOGOUT: 'whatsapp:logout',
 
-  // Files
+  // Arquivos
   FILES_SCAN: 'files:scan',
   FILES_ADD: 'files:add',
   FILES_DELETE: 'files:delete',
   FILES_OPEN: 'files:open',
+  FILES_CHANGED: 'files:changed',
 
-  // Send
+  // Envio
   SEND_ALL: 'send:all',
   SEND_PROGRESS: 'send:progress',
   SEND_COMPLETE: 'send:complete',
 
-  // Config
+  // Configuração
   CONFIG_GET: 'config:get',
   CONFIG_SET: 'config:set',
   CONFIG_MAP_GROUP: 'config:map-group',
   CONFIG_GET_GROUP_PATH: 'config:get-group-path',
 
-  // Dialog
+  // Diálogo
   DIALOG_SELECT_FILES: 'dialog:select-files',
 } as const;
 

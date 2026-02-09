@@ -9,7 +9,7 @@ interface StatusProps {
   onLogout?: () => void;
 }
 
-export function Status({ status, errorMessage, sendProgress, onLogout }: StatusProps) {
+export const Status = React.memo(function Status({ status, errorMessage, sendProgress, onLogout }: StatusProps) {
   const statusText: Record<string, string> = {
     connecting: 'Conectando ao WhatsApp...',
     connected: 'Conectado ao WhatsApp',
@@ -57,4 +57,4 @@ export function Status({ status, errorMessage, sendProgress, onLogout }: StatusP
       )}
     </div>
   );
-}
+});

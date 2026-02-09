@@ -3,15 +3,25 @@ import { IPC_CHANNELS, Config, GroupStatus, SendProgress, WhatsAppGroup, WhatsAp
 
 type IpcCallback<T> = (data: T) => void;
 
+function onEvent<T>(channel: string, extract?: (event: Electron.IpcRendererEvent, ...args: any[]) => T) {
+  return (callback: IpcCallback<T>) => {
+    const handler = extract
+      ? (...args: [Electron.IpcRendererEvent, ...any[]]) => callback(extract(...args))
+      : () => callback(undefined as T);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+  };
+}
+
 const api = {
-  // Config
+  // Configuração
   getConfig: (): Promise<Config> => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET),
   setConfig: (config: Partial<Config>): Promise<Config> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SET, config),
   mapGroup: (folderName: string, whatsappId: string): Promise<Config> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_MAP_GROUP, folderName, whatsappId),
 
-  // Files
+  // Arquivos
   scanBoletos: (): Promise<GroupStatus[]> => ipcRenderer.invoke(IPC_CHANNELS.FILES_SCAN),
   selectFiles: (defaultPath?: string): Promise<string[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SELECT_FILES, defaultPath),
@@ -24,6 +34,9 @@ const api = {
   getGroupPath: (groupName: string): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET_GROUP_PATH, groupName),
 
+  // Observador de arquivos
+  onFilesChanged: onEvent<void>(IPC_CHANNELS.FILES_CHANGED),
+
   // WhatsApp
   getWhatsAppGroups: (): Promise<WhatsAppGroup[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.WHATSAPP_GET_GROUPS),
@@ -34,51 +47,17 @@ const api = {
   logout: (): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.WHATSAPP_LOGOUT),
 
-  // Send
+  // Envio
   sendAll: (): Promise<SendProgress> => ipcRenderer.invoke(IPC_CHANNELS.SEND_ALL),
 
-  // Events
-  onQrCode: (callback: IpcCallback<string>) => {
-    const handler = (_: Electron.IpcRendererEvent, qr: string) => callback(qr);
-    ipcRenderer.on(IPC_CHANNELS.WHATSAPP_QR, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_QR, handler);
-  },
-
-  onWhatsAppReady: (callback: IpcCallback<void>) => {
-    const handler = () => callback();
-    ipcRenderer.on(IPC_CHANNELS.WHATSAPP_READY, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_READY, handler);
-  },
-
-  onWhatsAppDisconnected: (callback: IpcCallback<void>) => {
-    const handler = () => callback();
-    ipcRenderer.on(IPC_CHANNELS.WHATSAPP_DISCONNECTED, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_DISCONNECTED, handler);
-  },
-
-  onWhatsAppAuthFailure: (callback: IpcCallback<string>) => {
-    const handler = (_: Electron.IpcRendererEvent, msg: string) => callback(msg);
-    ipcRenderer.on(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, handler);
-  },
-
-  onWhatsAppInitError: (callback: IpcCallback<string>) => {
-    const handler = (_: Electron.IpcRendererEvent, msg: string) => callback(msg);
-    ipcRenderer.on(IPC_CHANNELS.WHATSAPP_INIT_ERROR, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.WHATSAPP_INIT_ERROR, handler);
-  },
-
-  onSendProgress: (callback: IpcCallback<SendProgress>) => {
-    const handler = (_: Electron.IpcRendererEvent, progress: SendProgress) => callback(progress);
-    ipcRenderer.on(IPC_CHANNELS.SEND_PROGRESS, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.SEND_PROGRESS, handler);
-  },
-
-  onSendComplete: (callback: IpcCallback<SendProgress>) => {
-    const handler = (_: Electron.IpcRendererEvent, progress: SendProgress) => callback(progress);
-    ipcRenderer.on(IPC_CHANNELS.SEND_COMPLETE, handler);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.SEND_COMPLETE, handler);
-  },
+  // Eventos
+  onQrCode: onEvent<string>(IPC_CHANNELS.WHATSAPP_QR, (_, qr) => qr),
+  onWhatsAppReady: onEvent<void>(IPC_CHANNELS.WHATSAPP_READY),
+  onWhatsAppDisconnected: onEvent<void>(IPC_CHANNELS.WHATSAPP_DISCONNECTED),
+  onWhatsAppAuthFailure: onEvent<string>(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, (_, msg) => msg),
+  onWhatsAppInitError: onEvent<string>(IPC_CHANNELS.WHATSAPP_INIT_ERROR, (_, msg) => msg),
+  onSendProgress: onEvent<SendProgress>(IPC_CHANNELS.SEND_PROGRESS, (_, progress) => progress),
+  onSendComplete: onEvent<SendProgress>(IPC_CHANNELS.SEND_COMPLETE, (_, progress) => progress),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

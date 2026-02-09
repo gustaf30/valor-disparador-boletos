@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, FolderOpen, Search, AlertTriangle, Check, Loader2, RefreshCw } from 'lucide-react';
 import type { WhatsAppGroup } from '../../shared/types';
 
@@ -9,43 +9,31 @@ interface GroupMapperProps {
   onCancel: () => void;
 }
 
-export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: GroupMapperProps) {
+export const GroupMapper = React.memo(function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: GroupMapperProps) {
   const [selectedId, setSelectedId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async (signal?: { cancelled: boolean }) => {
     setIsLoading(true);
     setError(null);
     try {
       const fetchedGroups = await onFetchGroups();
-      setGroups(fetchedGroups);
+      if (!signal?.cancelled) setGroups(fetchedGroups);
     } catch (err) {
-      setError('Erro ao carregar grupos. Tente novamente.');
+      if (!signal?.cancelled) setError('Erro ao carregar grupos. Tente novamente.');
     } finally {
-      setIsLoading(false);
+      if (!signal?.cancelled) setIsLoading(false);
     }
-  };
+  }, [onFetchGroups]);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const fetchedGroups = await onFetchGroups();
-        if (!cancelled) setGroups(fetchedGroups);
-      } catch (err) {
-        if (!cancelled) setError('Erro ao carregar grupos. Tente novamente.');
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [onFetchGroups]);
+    const signal = { cancelled: false };
+    loadGroups(signal);
+    return () => { signal.cancelled = true; };
+  }, [loadGroups]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -55,8 +43,9 @@ export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: Gro
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onCancel]);
 
-  const filteredGroups = groups.filter(g =>
-    g.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredGroups = useMemo(() =>
+    groups.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase())),
+    [groups, searchTerm]
   );
 
   const handleSave = () => {
@@ -87,7 +76,7 @@ export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: Gro
           <div className="error-state">
             <AlertTriangle size={24} className="warning-icon" />
             <span>{error}</span>
-            <button className="btn btn-secondary" onClick={loadGroups}>
+            <button className="btn btn-secondary" onClick={() => loadGroups()}>
               Tentar novamente
             </button>
           </div>
@@ -105,7 +94,7 @@ export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: Gro
               />
               <button
                 className="btn btn-icon-only btn-secondary refresh-btn"
-                onClick={loadGroups}
+                onClick={() => loadGroups()}
                 title="Atualizar lista"
                 disabled={isLoading}
               >
@@ -131,7 +120,7 @@ export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: Gro
             {groups.length === 0 && (
               <div className="no-groups-warning">
                 <AlertTriangle size={16} className="warning-icon" />
-                <span>Nenhum grupo encontrado. Verifique sua conexao com o WhatsApp.</span>
+                <span>Nenhum grupo encontrado. Verifique sua conexão com o WhatsApp.</span>
               </div>
             )}
           </>
@@ -153,4 +142,4 @@ export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: Gro
       </div>
     </div>
   );
-}
+});

@@ -5,6 +5,10 @@ import { GroupStatus, FileMapping } from '../shared/types';
 
 export class FileHandler {
   private boletosFolder: string;
+  private watchers: fs.FSWatcher[] = [];
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private onChange: (() => void) | null = null;
 
   constructor(boletosFolder: string) {
     this.boletosFolder = boletosFolder;
@@ -26,13 +30,13 @@ export class FileHandler {
     const groups: GroupStatus[] = [];
 
     try {
-      const entries = fs.readdirSync(this.boletosFolder, { withFileTypes: true });
+      const entries = await fsp.readdir(this.boletosFolder, { withFileTypes: true });
 
       for (const entry of entries) {
         if (entry.isDirectory()) {
           const groupName = entry.name;
           const groupPath = path.join(this.boletosFolder, groupName);
-          const files = this.getPdfFiles(groupPath);
+          const files = await this.getPdfFiles(groupPath);
 
           groups.push({
             name: groupName,
@@ -49,9 +53,9 @@ export class FileHandler {
     return groups;
   }
 
-  private getPdfFiles(folderPath: string): string[] {
+  private async getPdfFiles(folderPath: string): Promise<string[]> {
     try {
-      const files = fs.readdirSync(folderPath);
+      const files = await fsp.readdir(folderPath);
       return files
         .filter((file) => file.toLowerCase().endsWith('.pdf'))
         .map((file) => path.join(folderPath, file));
@@ -64,9 +68,7 @@ export class FileHandler {
   async addFiles(groupName: string, filePaths: string[]): Promise<{ mappings: FileMapping[]; errors: string[] }> {
     const groupFolder = path.join(this.boletosFolder, groupName);
 
-    if (!fs.existsSync(groupFolder)) {
-      fs.mkdirSync(groupFolder, { recursive: true });
-    }
+    await fsp.mkdir(groupFolder, { recursive: true });
 
     const mappings: FileMapping[] = [];
     const errors: string[] = [];
@@ -76,10 +78,9 @@ export class FileHandler {
         const fileName = path.basename(sourcePath);
         const destPath = path.join(groupFolder, fileName);
 
-        // Handle duplicate names
         let finalPath = destPath;
         let counter = 1;
-        while (fs.existsSync(finalPath)) {
+        while (await this.fileExists(finalPath)) {
           const ext = path.extname(fileName);
           const baseName = path.basename(fileName, ext);
           finalPath = path.join(groupFolder, `${baseName}_${counter}${ext}`);
@@ -98,6 +99,15 @@ export class FileHandler {
     return { mappings, errors };
   }
 
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fsp.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async deleteOriginalFile(filePath: string): Promise<boolean> {
     try {
       await fsp.access(filePath);
@@ -111,7 +121,7 @@ export class FileHandler {
   }
 
   async deleteFile(filePath: string): Promise<boolean> {
-    // Validate that the file is inside the boletos folder
+    // Validar que o arquivo está dentro da pasta de boletos (segurança)
     const resolved = path.resolve(filePath);
     const folderPrefix = path.resolve(this.boletosFolder) + path.sep;
     if (!resolved.startsWith(folderPrefix)) {
@@ -128,15 +138,82 @@ export class FileHandler {
     }
   }
 
-  createGroupFolder(groupName: string): string {
-    const groupFolder = path.join(this.boletosFolder, groupName);
-    if (!fs.existsSync(groupFolder)) {
-      fs.mkdirSync(groupFolder, { recursive: true });
+  startWatching(callback: () => void): void {
+    this.stopWatching();
+    this.onChange = callback;
+
+    try {
+      const rootWatcher = fs.watch(this.boletosFolder, { persistent: false }, () => {
+        this.debouncedNotify();
+        this.debouncedRefreshSubWatchers();
+      });
+      this.watchers.push(rootWatcher);
+    } catch (err) {
+      console.error('Failed to watch boletos folder:', err);
     }
-    return groupFolder;
+
+    this.refreshSubWatchers();
   }
 
-  getBoletosFolder(): string {
-    return this.boletosFolder;
+  private async refreshSubWatchers(): Promise<void> {
+    while (this.watchers.length > 1) {
+      const w = this.watchers.pop();
+      w?.close();
+    }
+
+    try {
+      const entries = await fsp.readdir(this.boletosFolder, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          try {
+            const subPath = path.join(this.boletosFolder, entry.name);
+            const watcher = fs.watch(subPath, { persistent: false }, () => {
+              this.debouncedNotify();
+            });
+            this.watchers.push(watcher);
+          } catch (err) {
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to watch subdirectories:', err);
+    }
   }
+
+  private debouncedRefreshSubWatchers(): void {
+    if (this.refreshDebounceTimer) {
+      clearTimeout(this.refreshDebounceTimer);
+    }
+    this.refreshDebounceTimer = setTimeout(() => {
+      this.refreshDebounceTimer = null;
+      this.refreshSubWatchers();
+    }, 2000);
+  }
+
+  private debouncedNotify(): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this.onChange?.();
+    }, 1000);
+  }
+
+  stopWatching(): void {
+    for (const watcher of this.watchers) {
+      watcher.close();
+    }
+    this.watchers = [];
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.refreshDebounceTimer) {
+      clearTimeout(this.refreshDebounceTimer);
+      this.refreshDebounceTimer = null;
+    }
+    this.onChange = null;
+  }
+
 }

@@ -1,4 +1,9 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { webcrypto } from 'crypto';
+if (!globalThis.crypto) {
+  (globalThis as any).crypto = webcrypto;
+}
+
+import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
 import path from 'path';
 import { WhatsAppClient } from './whatsapp';
 import { FileHandler } from './file-handler';
@@ -12,6 +17,21 @@ let fileHandler: FileHandler | null = null;
 let initError: string | null = null;
 let isQuitting = false;
 let isSendingInProgress = false;
+let lastProgressSendTime = 0;
+const PROGRESS_THROTTLE_MS = 200;
+
+function sendThrottledProgress(progress: SendProgress): void {
+  const now = Date.now();
+  if (now - lastProgressSendTime >= PROGRESS_THROTTLE_MS) {
+    mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+    lastProgressSendTime = now;
+  }
+}
+
+function sendImmediateProgress(progress: SendProgress): void {
+  mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+  lastProgressSendTime = Date.now();
+}
 
 // Mapa de arquivos copiados para originais (copiedPath -> originalPath)
 const fileOriginalMap = new Map<string, string>();
@@ -28,11 +48,14 @@ function saveConfig(config: Config): void {
 }
 
 function createWindow(): void {
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
+
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: Math.round(screenW * 0.65),
+    height: Math.round(screenH * 0.85),
     minWidth: 600,
     minHeight: 500,
+    center: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -43,7 +66,6 @@ function createWindow(): void {
     show: false,
   });
 
-  // Load the app
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
@@ -75,7 +97,7 @@ function createWindow(): void {
 }
 
 function setupIPC(config: Config): void {
-  // Config handlers
+  // Handlers de configuração
   ipcMain.handle(IPC_CHANNELS.CONFIG_GET, () => config);
 
   ipcMain.handle(IPC_CHANNELS.CONFIG_SET, (_, newConfig: Partial<Config>) => {
@@ -91,7 +113,7 @@ function setupIPC(config: Config): void {
     return config;
   });
 
-  // File handlers
+  // Handlers de arquivos
   ipcMain.handle(IPC_CHANNELS.FILES_SCAN, async () => {
     return fileHandler?.scanBoletos(config.groups) ?? [];
   });
@@ -134,7 +156,7 @@ function setupIPC(config: Config): void {
     return path.join(config.boletosFolder, groupName);
   });
 
-  // WhatsApp handlers
+  // Handlers do WhatsApp
   ipcMain.handle(IPC_CHANNELS.WHATSAPP_GET_GROUPS, async () => {
     return whatsappClient?.getGroups() ?? [];
   });
@@ -157,22 +179,7 @@ function setupIPC(config: Config): void {
 
       // Criar novo cliente para permitir novo login
       whatsappClient = new WhatsAppClient(app.getPath('userData'));
-
-      whatsappClient.on('qr', (qr: string) => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_QR, qr);
-      });
-
-      whatsappClient.on('ready', () => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_READY);
-      });
-
-      whatsappClient.on('disconnected', () => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_DISCONNECTED);
-      });
-
-      whatsappClient.on('auth_failure', (msg: string) => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, msg);
-      });
+      setupWhatsAppEvents(whatsappClient);
 
       // Iniciar novo cliente (vai gerar novo QR code)
       try {
@@ -185,10 +192,10 @@ function setupIPC(config: Config): void {
     }
   });
 
-  // Send handler
+  // Handler de envio
   ipcMain.handle(IPC_CHANNELS.SEND_ALL, async () => {
     if (!whatsappClient || !fileHandler) {
-      throw new Error('App not initialized');
+      throw new Error('App não inicializado');
     }
 
     if (isSendingInProgress) {
@@ -220,16 +227,14 @@ function setupIPC(config: Config): void {
         const groupId = group.whatsappId!;
         const groupName = group.name;
 
-        // 1. Selecionar mensagem (singular/plural)
         const message = group.files.length > 1
           ? config.messagePlural
           : config.messageSingular;
 
-        // 2. Enviar mensagem de texto UMA VEZ para o grupo
         progress.status = 'sending';
         progress.currentFile = '(mensagem)';
         progress.currentGroup = groupName;
-        mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+        sendThrottledProgress(progress);
 
         try {
           await whatsappClient.sendMessage(groupId, message);
@@ -238,24 +243,23 @@ function setupIPC(config: Config): void {
           progress.errors.push({
             file: '(mensagem)',
             group: groupName,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
           });
-          mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
-          continue; // Pula para próximo grupo se falhar
+          sendImmediateProgress(progress);
+          continue;
         }
 
-        // 3. Enviar todos os arquivos do grupo SEM caption
         for (const file of group.files) {
           progress.status = 'sending';
           progress.currentFile = path.basename(file);
           progress.currentGroup = groupName;
-          mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+          sendThrottledProgress(progress);
 
           try {
             await whatsappClient.sendFile(groupId, file);
 
             progress.status = 'deleting';
-            mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+            sendThrottledProgress(progress);
 
             // Excluir cópia
             await fileHandler.deleteFile(file);
@@ -275,16 +279,15 @@ function setupIPC(config: Config): void {
             progress.errors.push({
               file: path.basename(file),
               group: groupName,
-              error: error instanceof Error ? error.message : 'Unknown error',
+              error: error instanceof Error ? error.message : 'Erro desconhecido',
             });
-            mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+            sendImmediateProgress(progress);
           }
         }
 
-        // 4. Delay entre grupos (não entre arquivos)
         if (groupIndex < groupsToSend.length - 1) {
           progress.status = 'waiting';
-          mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+          sendImmediateProgress(progress);
           await new Promise(resolve => setTimeout(resolve, config.delayBetweenSends));
         }
       }
@@ -298,10 +301,33 @@ function setupIPC(config: Config): void {
   });
 }
 
+function setupWhatsAppEvents(client: WhatsAppClient): void {
+  client.on('qr', (qr: string) => {
+    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_QR, qr);
+  });
+
+  client.on('ready', () => {
+    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_READY);
+  });
+
+  client.on('disconnected', () => {
+    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_DISCONNECTED);
+  });
+
+  client.on('auth_failure', (msg: string) => {
+    mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, msg);
+  });
+}
+
+function startFileWatcher(): void {
+  fileHandler?.startWatching(() => {
+    mainWindow?.webContents.send(IPC_CHANNELS.FILES_CHANGED);
+  });
+}
+
 app.whenReady().then(async () => {
   const config = loadConfig();
 
-  // Ensure boletos folder exists
   if (!fs.existsSync(config.boletosFolder)) {
     fs.mkdirSync(config.boletosFolder, { recursive: true });
   }
@@ -310,22 +336,7 @@ app.whenReady().then(async () => {
 
   try {
     whatsappClient = new WhatsAppClient(app.getPath('userData'));
-
-    whatsappClient.on('qr', (qr: string) => {
-      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_QR, qr);
-    });
-
-    whatsappClient.on('ready', () => {
-      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_READY);
-    });
-
-    whatsappClient.on('disconnected', () => {
-      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_DISCONNECTED);
-    });
-
-    whatsappClient.on('auth_failure', (msg: string) => {
-      mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_AUTH_FAILURE, msg);
-    });
+    setupWhatsAppEvents(whatsappClient);
   } catch (error) {
     initError = error instanceof Error ? error.message : 'Erro ao criar cliente WhatsApp';
     console.error('Failed to create WhatsApp client:', error);
@@ -333,7 +344,7 @@ app.whenReady().then(async () => {
 
   setupIPC(config);
   createWindow();
-  // WhatsApp é inicializado dentro do ready-to-show do mainWindow
+  startFileWatcher();
 });
 
 app.on('window-all-closed', () => {
@@ -352,6 +363,8 @@ app.on('before-quit', async (e) => {
   if (isQuitting) return;
   isQuitting = true;
   e.preventDefault();
+
+  fileHandler?.stopWatching();
 
   try {
     if (whatsappClient) {

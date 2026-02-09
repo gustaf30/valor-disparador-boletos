@@ -8,7 +8,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-export function Settings({ config, onSave, onClose }: SettingsProps) {
+export const Settings = React.memo(function Settings({ config, onSave, onClose }: SettingsProps) {
   const [messageSingular, setMessageSingular] = useState(config.messageSingular);
   const [messagePlural, setMessagePlural] = useState(config.messagePlural);
   const [deleteOriginalFiles, setDeleteOriginalFiles] = useState(config.deleteOriginalFiles ?? false);
@@ -92,4 +92,4 @@ export function Settings({ config, onSave, onClose }: SettingsProps) {
       </div>
     </div>
   );
-}
+});

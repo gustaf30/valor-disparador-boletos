@@ -8,7 +8,7 @@ Aplicativo desktop para Windows que automatiza o envio de boletos em PDF para gr
 - **React 18** - Interface do usuario
 - **TypeScript** - Tipagem estatica
 - **Vite** - Bundler e dev server
-- **whatsapp-web.js** - Integracao com WhatsApp Web
+- **@whiskeysockets/baileys** - Integracao com WhatsApp via protocolo WebSocket
 - **Lucide React** - Icones da interface
 
 ## Instalacao

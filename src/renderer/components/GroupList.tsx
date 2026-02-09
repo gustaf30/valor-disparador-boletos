@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   CheckCircle,
   AlertTriangle,
@@ -13,6 +13,130 @@ import {
 } from 'lucide-react';
 import type { GroupStatus, WhatsAppGroup } from '../../shared/types';
 
+interface GroupItemProps {
+  group: GroupStatus;
+  isExpanded: boolean;
+  isDragOver: boolean;
+  hasAutoMatch: boolean;
+  onToggleExpand: (groupName: string) => void;
+  onAddFiles: (groupName: string) => void;
+  onMapGroup: (groupName: string) => void;
+  onDeleteFile: (groupName: string, filePath: string) => void;
+  onOpenFile: (filePath: string) => void;
+  onDragOver: (e: React.DragEvent, groupName: string) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent, groupName: string) => void;
+}
+
+const getFileName = (filePath: string) => {
+  const parts = filePath.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1];
+};
+
+const GroupItem = React.memo(function GroupItem({
+  group,
+  isExpanded,
+  isDragOver,
+  hasAutoMatch,
+  onToggleExpand,
+  onAddFiles,
+  onMapGroup,
+  onDeleteFile,
+  onOpenFile,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: GroupItemProps) {
+  return (
+    <div className="group-container">
+      <div
+        className={`group-item ${isDragOver ? 'drag-active' : ''}`}
+        onDragOver={(e) => onDragOver(e, group.name)}
+        onDragLeave={onDragLeave}
+        onDrop={(e) => onDrop(e, group.name)}
+      >
+        <div className="group-info">
+          <div className="group-name-row">
+            {group.whatsappId ? (
+              <CheckCircle size={16} className="group-status-icon mapped" />
+            ) : (
+              <AlertTriangle size={16} className="group-status-icon unmapped" />
+            )}
+            <span className="group-name">{group.name}</span>
+          </div>
+          <div className="group-meta">
+            <span
+              className={`group-count-badge ${group.fileCount === 0 ? 'empty' : ''} ${group.fileCount > 0 ? 'clickable' : ''}`}
+              onClick={() => group.fileCount > 0 && onToggleExpand(group.name)}
+              title={group.fileCount > 0 ? 'Clique para ver/ocultar arquivos' : undefined}
+            >
+              <FileText size={14} className="badge-icon" />
+              {group.fileCount} boleto{group.fileCount !== 1 ? 's' : ''}
+              {group.fileCount > 0 && (
+                <ChevronDown
+                  size={12}
+                  className={`expand-icon ${isExpanded ? 'expanded' : ''}`}
+                />
+              )}
+            </span>
+            {!group.whatsappId && (
+              <span className="group-unmapped">
+                <AlertTriangle size={12} className="badge-icon" />
+                Não vinculado
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="group-actions">
+          <button
+            className="btn btn-secondary btn-small"
+            onClick={() => onAddFiles(group.name)}
+            title="Adicionar boletos"
+          >
+            <Plus size={14} className="btn-icon" />
+            Adicionar
+          </button>
+          {(!hasAutoMatch || group.whatsappId) && (
+            <button
+              className="btn btn-secondary btn-small"
+              onClick={() => onMapGroup(group.name)}
+              title="Configurar grupo WhatsApp"
+            >
+              <Link size={14} className="btn-icon" />
+              {group.whatsappId ? 'Alterar' : 'Vincular'}
+            </button>
+          )}
+        </div>
+      </div>
+      {isExpanded && group.files.length > 0 && (
+        <div className="group-files">
+          {group.files.map((filePath) => (
+            <div key={filePath} className="file-item">
+              <div className="file-info">
+                <FileText size={14} className="file-icon" />
+                <span
+                  className="file-name clickable"
+                  onClick={() => onOpenFile(filePath)}
+                  title="Clique para abrir o documento"
+                >
+                  {getFileName(filePath)}
+                </span>
+              </div>
+              <button
+                className="btn-delete"
+                onClick={() => onDeleteFile(group.name, filePath)}
+                title="Remover arquivo"
+              >
+                <X size={14} className="delete-icon" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
 interface GroupListProps {
   groups: GroupStatus[];
   whatsappGroups: WhatsAppGroup[];
@@ -23,37 +147,36 @@ interface GroupListProps {
   onOpenFile: (filePath: string) => void;
 }
 
-export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRefresh, onDeleteFile, onOpenFile }: GroupListProps) {
+export const GroupList = React.memo(function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRefresh, onDeleteFile, onOpenFile }: GroupListProps) {
   const [newGroupName, setNewGroupName] = useState('');
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const toggleExpand = (groupName: string) => {
-    const newExpanded = new Set(expandedGroups);
-    if (newExpanded.has(groupName)) {
-      newExpanded.delete(groupName);
-    } else {
-      newExpanded.add(groupName);
+  const autoMatchSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const wg of whatsappGroups) {
+      set.add(wg.name.toLowerCase());
     }
-    setExpandedGroups(newExpanded);
-  };
+    return set;
+  }, [whatsappGroups]);
 
-  const getFileName = (filePath: string) => {
-    const parts = filePath.replace(/\\/g, '/').split('/');
-    return parts[parts.length - 1];
-  };
+  const toggleExpand = useCallback((groupName: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupName)) {
+        next.delete(groupName);
+      } else {
+        next.add(groupName);
+      }
+      return next;
+    });
+  }, []);
 
-  const hasAutoMatch = (groupName: string) => {
-    return whatsappGroups.some(
-      wg => wg.name.toLowerCase() === groupName.toLowerCase()
-    );
-  };
-
-  const handleCreateGroup = () => {
+  const handleCreateGroup = useCallback(() => {
     const name = newGroupName.trim();
     if (!name) return;
-    // Reject Windows-invalid folder name characters
+    // Rejeitar caracteres inválidos para nomes de pasta no Windows
     if (/[<>:"/\\|?*]/.test(name)) {
       alert('Nome inválido. Não use os caracteres: < > : " / \\ | ? *');
       return;
@@ -61,7 +184,7 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
     onAddFiles(name);
     setNewGroupName('');
     setShowNewGroup(false);
-  };
+  }, [newGroupName, onAddFiles]);
 
   const handleDragOver = useCallback((e: React.DragEvent, groupName: string) => {
     e.preventDefault();
@@ -91,7 +214,7 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
           alert(`Alguns arquivos não puderam ser copiados:\n\n${result.errors.join('\n')}`);
         }
       } catch (error) {
-        console.error('Failed to add dropped files:', error);
+        console.error('Falha ao adicionar arquivos arrastados:', error);
       } finally {
         onRefresh();
       }
@@ -152,92 +275,21 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
         </div>
       ) : (
         groups.map((group) => (
-          <div key={group.name} className="group-container">
-            <div
-              className={`group-item ${dragOverGroup === group.name ? 'drag-active' : ''}`}
-              onDragOver={(e) => handleDragOver(e, group.name)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, group.name)}
-            >
-              <div className="group-info">
-                <div className="group-name-row">
-                  {group.whatsappId ? (
-                    <CheckCircle size={16} className="group-status-icon mapped" />
-                  ) : (
-                    <AlertTriangle size={16} className="group-status-icon unmapped" />
-                  )}
-                  <span className="group-name">{group.name}</span>
-                </div>
-                <div className="group-meta">
-                  <span
-                    className={`group-count-badge ${group.fileCount === 0 ? 'empty' : ''} ${group.fileCount > 0 ? 'clickable' : ''}`}
-                    onClick={() => group.fileCount > 0 && toggleExpand(group.name)}
-                    title={group.fileCount > 0 ? 'Clique para ver/ocultar arquivos' : undefined}
-                  >
-                    <FileText size={14} className="badge-icon" />
-                    {group.fileCount} boleto{group.fileCount !== 1 ? 's' : ''}
-                    {group.fileCount > 0 && (
-                      <ChevronDown
-                        size={12}
-                        className={`expand-icon ${expandedGroups.has(group.name) ? 'expanded' : ''}`}
-                      />
-                    )}
-                  </span>
-                  {!group.whatsappId && (
-                    <span className="group-unmapped">
-                      <AlertTriangle size={12} className="badge-icon" />
-                      Não vinculado
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="group-actions">
-                <button
-                  className="btn btn-secondary btn-small"
-                  onClick={() => onAddFiles(group.name)}
-                  title="Adicionar boletos"
-                >
-                  <Plus size={14} className="btn-icon" />
-                  Adicionar
-                </button>
-                {(!hasAutoMatch(group.name) || group.whatsappId) && (
-                  <button
-                    className="btn btn-secondary btn-small"
-                    onClick={() => onMapGroup(group.name)}
-                    title="Configurar grupo WhatsApp"
-                  >
-                    <Link size={14} className="btn-icon" />
-                    {group.whatsappId ? 'Alterar' : 'Vincular'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {expandedGroups.has(group.name) && group.files.length > 0 && (
-              <div className="group-files">
-                {group.files.map((filePath) => (
-                  <div key={filePath} className="file-item">
-                    <div className="file-info">
-                      <FileText size={14} className="file-icon" />
-                      <span
-                        className="file-name clickable"
-                        onClick={() => onOpenFile(filePath)}
-                        title="Clique para abrir o documento"
-                      >
-                        {getFileName(filePath)}
-                      </span>
-                    </div>
-                    <button
-                      className="btn-delete"
-                      onClick={() => onDeleteFile(group.name, filePath)}
-                      title="Remover arquivo"
-                    >
-                      <X size={14} className="delete-icon" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <GroupItem
+            key={group.name}
+            group={group}
+            isExpanded={expandedGroups.has(group.name)}
+            isDragOver={dragOverGroup === group.name}
+            hasAutoMatch={autoMatchSet.has(group.name.toLowerCase())}
+            onToggleExpand={toggleExpand}
+            onAddFiles={onAddFiles}
+            onMapGroup={onMapGroup}
+            onDeleteFile={onDeleteFile}
+            onOpenFile={onOpenFile}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          />
         ))
       )}
 
@@ -258,4 +310,4 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
       </div>
     </div>
   );
-}
+});

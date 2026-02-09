@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { QRCode } from './components/QRCode';
 import { GroupList } from './components/GroupList';
@@ -7,7 +7,7 @@ import { Status } from './components/Status';
 import { GroupMapper } from './components/GroupMapper';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { Settings } from './components/Settings';
-import type { GroupStatus, SendProgress, WhatsAppGroup, Config, AddFilesResult } from '../shared/types';
+import type { GroupStatus, SendProgress, WhatsAppGroup, WhatsAppConnectionState, Config, AddFilesResult } from '../shared/types';
 import logo from './public/logo.jpg';
 
 declare global {
@@ -22,7 +22,7 @@ declare global {
       deleteFile: (filePath: string) => Promise<boolean>;
       getGroupPath: (groupName: string) => Promise<string>;
       getWhatsAppGroups: () => Promise<WhatsAppGroup[]>;
-      getWhatsAppStatus: () => Promise<'connected' | 'connecting' | 'disconnected' | 'error'>;
+      getWhatsAppStatus: () => Promise<WhatsAppConnectionState>;
       getInitError: () => Promise<string | null>;
       logout: () => Promise<void>;
       openFile: (filePath: string) => Promise<string>;
@@ -32,33 +32,16 @@ declare global {
       onWhatsAppDisconnected: (callback: () => void) => () => void;
       onWhatsAppAuthFailure: (callback: (msg: string) => void) => () => void;
       onWhatsAppInitError: (callback: (msg: string) => void) => () => void;
+      onFilesChanged: (callback: () => void) => () => void;
       onSendProgress: (callback: (progress: SendProgress) => void) => () => void;
       onSendComplete: (callback: (progress: SendProgress) => void) => () => void;
     };
   }
 }
 
-type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
-
-function formatInitError(error: string): string {
-  // Traduzir erros comuns do Puppeteer/Chrome para português
-  if (error.includes('Failed to launch the browser process') ||
-      error.includes('spawn') ||
-      error.includes('ENOENT') ||
-      error.includes('4294967295')) {
-    return 'Não foi possível iniciar o navegador Chrome. Verifique se o Google Chrome está instalado corretamente no seu computador.';
-  }
-  if (error.includes('Chrome') && error.includes('not found')) {
-    return 'Google Chrome não encontrado. Por favor, instale o Google Chrome para usar este aplicativo.';
-  }
-  if (error.includes('timeout')) {
-    return 'Tempo esgotado ao iniciar o navegador. Tente fechar outros programas e reiniciar o aplicativo.';
-  }
-  return error;
-}
 
 function App() {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<WhatsAppConnectionState>('connecting');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [groups, setGroups] = useState<GroupStatus[]>([]);
   const [whatsappGroups, setWhatsappGroups] = useState<WhatsAppGroup[]>([]);
@@ -72,13 +55,18 @@ function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const connectionStatusRef = useRef<ConnectionStatus>(connectionStatus);
-  useEffect(() => {
-    connectionStatusRef.current = connectionStatus;
-  }, [connectionStatus]);
+  // Guarda contra chamadas concorrentes ao scanBoletos
+  const scanInFlightRef = useRef<Promise<GroupStatus[]> | null>(null);
+  const debouncedScan = useCallback((): Promise<GroupStatus[]> => {
+    if (scanInFlightRef.current) return scanInFlightRef.current;
+    const p = window.electronAPI.scanBoletos().finally(() => {
+      scanInFlightRef.current = null;
+    });
+    scanInFlightRef.current = p;
+    return p;
+  }, []);
 
   // Auto-mapeia pastas com grupos WhatsApp de mesmo nome
-  // Não chama refreshGroups para evitar dependência circular
   const autoMapGroups = useCallback(async (folders: GroupStatus[], waGroups: WhatsAppGroup[]) => {
     let anyMapped = false;
     for (const folder of folders) {
@@ -93,34 +81,39 @@ function App() {
       }
     }
     if (anyMapped) {
-      // Apenas re-escaneia boletos, sem chamar refreshGroups (evita loop)
-      const updated = await window.electronAPI.scanBoletos();
+      const updated = await debouncedScan();
       setGroups(updated);
     }
-  }, []); // Sem dependências externas
+  }, [debouncedScan]);
+
+  // Busca grupos e auto-mapeia (usado em vários callbacks)
+  const fetchAndAutoMap = useCallback(async (status?: WhatsAppConnectionState) => {
+    const [scanned, waGroups] = await Promise.all([
+      debouncedScan(),
+      window.electronAPI.getWhatsAppGroups()
+    ]);
+    setGroups(scanned);
+    setWhatsappGroups(waGroups);
+    const isConnected = status === 'connected';
+    if (isConnected && waGroups.length > 0) {
+      await autoMapGroups(scanned, waGroups);
+    }
+  }, [autoMapGroups, debouncedScan]);
 
   const refreshGroups = useCallback(async () => {
     if (!window.electronAPI) return;
     try {
-      const [scanned, waGroups] = await Promise.all([
-        window.electronAPI.scanBoletos(),
-        window.electronAPI.getWhatsAppGroups()
-      ]);
-      setGroups(scanned);
-      setWhatsappGroups(waGroups);
-      // Auto-mapear novas pastas quando conectado (read status via ref)
-      if (connectionStatusRef.current === 'connected' && waGroups.length > 0) {
-        await autoMapGroups(scanned, waGroups);
-      }
+      const status = await window.electronAPI.getWhatsAppStatus();
+      await fetchAndAutoMap(status);
     } catch (error) {
-      console.error('Failed to refresh:', error);
+      console.error('Falha ao atualizar grupos:', error);
     }
-  }, [autoMapGroups]);
+  }, [fetchAndAutoMap]);
 
-  // Effect 1: IPC listeners (mount once)
+  // Listeners IPC (montado uma vez)
   useEffect(() => {
     if (!window.electronAPI) {
-      console.error('electronAPI not available - preload script may not have loaded');
+      console.error('electronAPI não disponível — preload pode não ter carregado');
       return;
     }
 
@@ -132,14 +125,10 @@ function App() {
     const unsubReady = window.electronAPI.onWhatsAppReady(async () => {
       setConnectionStatus('connected');
       setQrCode(null);
-      const [scanned, waGroups] = await Promise.all([
-        window.electronAPI.scanBoletos(),
-        window.electronAPI.getWhatsAppGroups()
-      ]);
-      setGroups(scanned);
-      setWhatsappGroups(waGroups);
-      if (waGroups && waGroups.length > 0) {
-        await autoMapGroups(scanned, waGroups);
+      try {
+        await fetchAndAutoMap('connected');
+      } catch (error) {
+        console.error('Falha ao buscar grupos após conexão:', error);
       }
     });
 
@@ -149,13 +138,13 @@ function App() {
 
     const unsubAuthFailure = window.electronAPI.onWhatsAppAuthFailure((msg) => {
       setConnectionStatus('error');
-      setErrorMessage(formatInitError(msg));
+      setErrorMessage(msg);
       setQrCode(null);
     });
 
     const unsubInitError = window.electronAPI.onWhatsAppInitError((msg) => {
       setConnectionStatus('error');
-      setErrorMessage(formatInitError(msg));
+      setErrorMessage(msg);
       setQrCode(null);
     });
 
@@ -167,43 +156,35 @@ function App() {
       setSendProgress(progress);
       setIsSending(false);
       setLastSendTime(new Date());
-      // Inline refresh to avoid stale closure
       try {
         const [scanned, waGroups] = await Promise.all([
-          window.electronAPI.scanBoletos(),
+          debouncedScan(),
           window.electronAPI.getWhatsAppGroups()
         ]);
         setGroups(scanned);
         setWhatsappGroups(waGroups);
       } catch (error) {
-        console.error('Failed to refresh after send:', error);
+        console.error('Falha ao atualizar após envio:', error);
       }
     });
 
-    // Initial scan
     refreshGroups();
-
-    // Load config
     window.electronAPI.getConfig().then(setConfig);
 
     // Consultar status atual do WhatsApp (caso ready já tenha sido emitido)
     window.electronAPI.getWhatsAppStatus().then(async (status) => {
       if (status === 'connected') {
         setConnectionStatus('connected');
-        const [scanned, waGroups] = await Promise.all([
-          window.electronAPI.scanBoletos(),
-          window.electronAPI.getWhatsAppGroups()
-        ]);
-        setGroups(scanned);
-        setWhatsappGroups(waGroups);
-        if (waGroups && waGroups.length > 0) {
-          await autoMapGroups(scanned, waGroups);
+        try {
+          await fetchAndAutoMap('connected');
+        } catch (error) {
+          console.error('Falha ao buscar grupos:', error);
         }
       } else if (status === 'error') {
         setConnectionStatus('error');
         const initErr = await window.electronAPI.getInitError();
         if (initErr) {
-          setErrorMessage(formatInitError(initErr));
+          setErrorMessage(initErr);
         }
       } else if (status === 'disconnected') {
         setConnectionStatus('disconnected');
@@ -222,30 +203,31 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Effect 2: Polling para detectar novas pastas e auto-mapear
+  // Observador de mudanças no filesystem
   useEffect(() => {
-    if (connectionStatus !== 'connected') return;
+    if (!window.electronAPI) return;
 
-    const interval = setInterval(async () => {
+    const unsubFilesChanged = window.electronAPI.onFilesChanged(async () => {
       try {
-        const [scanned, waGroups] = await Promise.all([
-          window.electronAPI.scanBoletos(),
-          window.electronAPI.getWhatsAppGroups()
-        ]);
+        const scanned = await debouncedScan();
         setGroups(scanned);
-        setWhatsappGroups(waGroups);
-        if (waGroups.length > 0) {
-          await autoMapGroups(scanned, waGroups);
+        const status = await window.electronAPI.getWhatsAppStatus();
+        if (status === 'connected') {
+          const waGroups = await window.electronAPI.getWhatsAppGroups();
+          setWhatsappGroups(waGroups);
+          if (waGroups.length > 0) {
+            await autoMapGroups(scanned, waGroups);
+          }
         }
       } catch (error) {
-        console.error('Failed to poll:', error);
+        console.error('Falha ao processar mudança de arquivos:', error);
       }
-    }, 5000);
+    });
 
-    return () => clearInterval(interval);
-  }, [connectionStatus, autoMapGroups]);
+    return () => unsubFilesChanged();
+  }, [autoMapGroups, debouncedScan]);
 
-  const handleAddFiles = async (groupName: string) => {
+  const handleAddFiles = useCallback(async (groupName: string) => {
     try {
       const groupPath = await window.electronAPI.getGroupPath(groupName);
       const files = await window.electronAPI.selectFiles(groupPath);
@@ -257,65 +239,99 @@ function App() {
         }
       }
     } catch (error) {
-      console.error('Failed to add files:', error);
+      console.error('Falha ao adicionar arquivos:', error);
     }
-  };
+  }, [refreshGroups]);
 
-  const handleDeleteFile = async (groupName: string, filePath: string) => {
+  const handleDeleteFile = useCallback(async (groupName: string, filePath: string) => {
     try {
       await window.electronAPI.deleteFile(filePath);
       await refreshGroups();
     } catch (error) {
-      console.error('Failed to delete file:', error);
+      console.error('Falha ao excluir arquivo:', error);
     }
-  };
+  }, [refreshGroups]);
 
-  const handleMapGroup = (groupName: string) => {
+  const handleMapGroup = useCallback((groupName: string) => {
     setSelectedGroup(groupName);
     setMapperOpen(true);
-  };
+  }, []);
 
-  const handleSaveMapping = async (whatsappId: string) => {
+  const handleSaveMapping = useCallback(async (whatsappId: string) => {
     if (selectedGroup) {
       try {
         await window.electronAPI.mapGroup(selectedGroup, whatsappId);
         await refreshGroups();
       } catch (error) {
-        console.error('Failed to save mapping:', error);
+        console.error('Falha ao salvar mapeamento:', error);
       }
     }
     setMapperOpen(false);
     setSelectedGroup(null);
-  };
+  }, [selectedGroup, refreshGroups]);
 
-  const handleSendClick = () => {
+  const handleSendClick = useCallback(() => {
     setConfirmOpen(true);
-  };
+  }, []);
 
-  const handleConfirmSend = async () => {
+  const handleConfirmSend = useCallback(async () => {
     setConfirmOpen(false);
     setIsSending(true);
     setSendProgress(null);
     try {
       await window.electronAPI.sendAll();
     } catch (error) {
-      console.error('Failed to send:', error);
+      console.error('Falha ao enviar:', error);
       setIsSending(false);
     }
-  };
+  }, []);
 
-  const handleSaveSettings = async (newConfig: Partial<Config>) => {
+  const handleSaveSettings = useCallback(async (newConfig: Partial<Config>) => {
     try {
       const updated = await window.electronAPI.setConfig(newConfig);
       setConfig(updated);
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      console.error('Falha ao salvar configurações:', error);
     }
-  };
+  }, []);
 
-  const totalFiles = groups.reduce((sum, g) => sum + g.fileCount, 0);
-  const mappedGroupsWithFiles = groups.filter(g => g.whatsappId && g.fileCount > 0);
-  const filesToSend = mappedGroupsWithFiles.reduce((sum, g) => sum + g.fileCount, 0);
+  const handleLogout = useCallback(async () => {
+    setConnectionStatus('connecting');
+    try {
+      await window.electronAPI.logout();
+    } catch (error) {
+      console.error('Falha ao desconectar:', error);
+    }
+  }, []);
+
+  const handleOpenFile = useCallback((filePath: string) => {
+    window.electronAPI.openFile(filePath);
+  }, []);
+
+  const handleSettingsOpen = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
+  const handleSettingsClose = useCallback(() => {
+    setSettingsOpen(false);
+  }, []);
+
+  const handleMapperCancel = useCallback(() => {
+    setMapperOpen(false);
+    setSelectedGroup(null);
+  }, []);
+
+  const handleConfirmCancel = useCallback(() => {
+    setConfirmOpen(false);
+  }, []);
+
+  const handleFetchGroups = useCallback(() => {
+    return window.electronAPI.getWhatsAppGroups();
+  }, []);
+
+  const totalFiles = useMemo(() => groups.reduce((sum, g) => sum + g.fileCount, 0), [groups]);
+  const mappedGroupsWithFiles = useMemo(() => groups.filter(g => g.whatsappId && g.fileCount > 0), [groups]);
+  const filesToSend = useMemo(() => mappedGroupsWithFiles.reduce((sum, g) => sum + g.fileCount, 0), [mappedGroupsWithFiles]);
 
   return (
     <div className="app">
@@ -329,7 +345,7 @@ function App() {
         </div>
         <button
           className="btn btn-icon-only btn-secondary"
-          onClick={() => setSettingsOpen(true)}
+          onClick={handleSettingsOpen}
           title="Configurar mensagens de envio"
         >
           <SettingsIcon size={18} />
@@ -340,14 +356,7 @@ function App() {
         status={connectionStatus}
         errorMessage={errorMessage}
         sendProgress={isSending ? sendProgress : null}
-        onLogout={async () => {
-          setConnectionStatus('connecting');
-          try {
-            await window.electronAPI.logout();
-          } catch (error) {
-            console.error('Logout failed:', error);
-          }
-        }}
+        onLogout={handleLogout}
       />
 
       {connectionStatus === 'error' && !qrCode && (
@@ -355,7 +364,7 @@ function App() {
           <h3>Erro ao inicializar</h3>
           <p>{errorMessage || 'Ocorreu um erro ao conectar ao WhatsApp.'}</p>
           <p className="error-hint">
-            Certifique-se de que o Google Chrome está instalado e tente reiniciar o aplicativo.
+            Tente reiniciar o aplicativo. Se o problema persistir, faça logout e escaneie o QR code novamente.
           </p>
         </div>
       )}
@@ -373,7 +382,7 @@ function App() {
             onMapGroup={handleMapGroup}
             onRefresh={refreshGroups}
             onDeleteFile={handleDeleteFile}
-            onOpenFile={(filePath) => window.electronAPI.openFile(filePath)}
+            onOpenFile={handleOpenFile}
           />
 
           <SendButton
@@ -395,12 +404,9 @@ function App() {
       {mapperOpen && selectedGroup && (
         <GroupMapper
           folderName={selectedGroup}
-          onFetchGroups={() => window.electronAPI.getWhatsAppGroups()}
+          onFetchGroups={handleFetchGroups}
           onSave={handleSaveMapping}
-          onCancel={() => {
-            setMapperOpen(false);
-            setSelectedGroup(null);
-          }}
+          onCancel={handleMapperCancel}
         />
       )}
 
@@ -410,7 +416,7 @@ function App() {
           message={`Deseja enviar ${filesToSend} boleto(s) para ${mappedGroupsWithFiles.length} grupo(s)?`}
           deleteOriginalFiles={config?.deleteOriginalFiles}
           onConfirm={handleConfirmSend}
-          onCancel={() => setConfirmOpen(false)}
+          onCancel={handleConfirmCancel}
         />
       )}
 
@@ -418,7 +424,7 @@ function App() {
         <Settings
           config={config}
           onSave={handleSaveSettings}
-          onClose={() => setSettingsOpen(false)}
+          onClose={handleSettingsClose}
         />
       )}
     </div>

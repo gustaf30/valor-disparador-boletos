@@ -41,25 +41,9 @@ describe('FileHandler', () => {
     const newDir = path.join(tmpDir, 'new-boletos');
     handler.setBoletosFolder(newDir);
     expect(fs.existsSync(newDir)).toBe(true);
-    expect(handler.getBoletosFolder()).toBe(newDir);
   });
 
   // 4
-  it('createGroupFolder cria subpasta', () => {
-    handler = new FileHandler(boletosDir);
-    const result = handler.createGroupFolder('GrupoA');
-    expect(fs.existsSync(result)).toBe(true);
-    expect(result).toBe(path.join(boletosDir, 'GrupoA'));
-  });
-
-  // 5
-  it('createGroupFolder idempotente', () => {
-    handler = new FileHandler(boletosDir);
-    handler.createGroupFolder('GrupoA');
-    expect(() => handler.createGroupFolder('GrupoA')).not.toThrow();
-  });
-
-  // 6
   it('scanBoletos retorna [] sem subdiretórios', async () => {
     handler = new FileHandler(boletosDir);
     const result = await handler.scanBoletos({});
@@ -69,7 +53,8 @@ describe('FileHandler', () => {
   // 7
   it('scanBoletos conta PDFs por grupo e ignora .txt', async () => {
     handler = new FileHandler(boletosDir);
-    const groupDir = handler.createGroupFolder('GrupoA');
+    const groupDir = path.join(boletosDir, 'GrupoA');
+    fs.mkdirSync(groupDir, { recursive: true });
     fs.writeFileSync(path.join(groupDir, 'boleto1.pdf'), 'fake');
     fs.writeFileSync(path.join(groupDir, 'boleto2.pdf'), 'fake');
     fs.writeFileSync(path.join(groupDir, 'readme.txt'), 'text');
@@ -82,7 +67,7 @@ describe('FileHandler', () => {
   // 8
   it('scanBoletos mapeia whatsappId', async () => {
     handler = new FileHandler(boletosDir);
-    handler.createGroupFolder('GrupoA');
+    fs.mkdirSync(path.join(boletosDir, 'GrupoA'), { recursive: true });
     fs.writeFileSync(path.join(boletosDir, 'GrupoA', 'b.pdf'), 'fake');
 
     const result = await handler.scanBoletos({ GrupoA: 'waid123' });
@@ -92,7 +77,7 @@ describe('FileHandler', () => {
   // 9
   it('scanBoletos retorna null para grupo não mapeado', async () => {
     handler = new FileHandler(boletosDir);
-    handler.createGroupFolder('GrupoA');
+    fs.mkdirSync(path.join(boletosDir, 'GrupoA'), { recursive: true });
     fs.writeFileSync(path.join(boletosDir, 'GrupoA', 'b.pdf'), 'fake');
 
     const result = await handler.scanBoletos({});
@@ -103,7 +88,7 @@ describe('FileHandler', () => {
   it('scanBoletos ignora arquivos soltos na raiz', async () => {
     handler = new FileHandler(boletosDir);
     fs.writeFileSync(path.join(boletosDir, 'solto.pdf'), 'fake');
-    handler.createGroupFolder('GrupoA');
+    fs.mkdirSync(path.join(boletosDir, 'GrupoA'), { recursive: true });
     fs.writeFileSync(path.join(boletosDir, 'GrupoA', 'b.pdf'), 'fake');
 
     const result = await handler.scanBoletos({});
@@ -127,7 +112,7 @@ describe('FileHandler', () => {
   // 12
   it('addFiles renomeia duplicatas (_1, _2)', async () => {
     handler = new FileHandler(boletosDir);
-    handler.createGroupFolder('GrupoA');
+    fs.mkdirSync(path.join(boletosDir, 'GrupoA'), { recursive: true });
 
     // Place existing file
     fs.writeFileSync(path.join(boletosDir, 'GrupoA', 'dup.pdf'), 'v0');
@@ -180,7 +165,7 @@ describe('FileHandler', () => {
   // 16
   it('deleteFile remove arquivo dentro de boletos', async () => {
     handler = new FileHandler(boletosDir);
-    handler.createGroupFolder('GrupoA');
+    fs.mkdirSync(path.join(boletosDir, 'GrupoA'), { recursive: true });
     const target = path.join(boletosDir, 'GrupoA', 'file.pdf');
     fs.writeFileSync(target, 'content');
 
@@ -228,7 +213,8 @@ describe('FileHandler', () => {
   // 21
   it('getPdfFiles é case-insensitive (.PDF, .Pdf, .pdf)', async () => {
     handler = new FileHandler(boletosDir);
-    const groupDir = handler.createGroupFolder('GrupoA');
+    const groupDir = path.join(boletosDir, 'GrupoA');
+    fs.mkdirSync(groupDir, { recursive: true });
     fs.writeFileSync(path.join(groupDir, 'a.pdf'), 'x');
     fs.writeFileSync(path.join(groupDir, 'b.PDF'), 'x');
     fs.writeFileSync(path.join(groupDir, 'c.Pdf'), 'x');

@@ -9,7 +9,7 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ title, message, deleteOriginalFiles, onConfirm, onCancel }: ConfirmDialogProps) {
+export const ConfirmDialog = React.memo(function ConfirmDialog({ title, message, deleteOriginalFiles, onConfirm, onCancel }: ConfirmDialogProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
@@ -42,4 +42,4 @@ export function ConfirmDialog({ title, message, deleteOriginalFiles, onConfirm, 
       </div>
     </div>
   );
-}
+});

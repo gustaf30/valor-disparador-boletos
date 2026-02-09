@@ -1,13 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════════════
-   VALOR BOLETOS — "Technical Blueprint" Design System
-   Light, minimal, technical drawing aesthetic.
-   ═══════════════════════════════════════════════════════════════════════ */
-
-/* ===== 1. Fonts ===== */
-@import url('https://api.fontshare.com/v2/css?f[]=space-grotesk@700&f[]=general-sans@400;500;600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
-
-/* ===== 2. Design Tokens ===== */
+/* ===== Tokens ===== */
 :root {
   /* Background layers */
   --bg: #F7F7F5;
@@ -75,31 +66,9 @@
   --font-body: 'General Sans', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
 
-  /* Legacy variable mapping for compatibility */
-  --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-border: var(--border);
-  --color-border-light: var(--border-hover);
-  --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
-  --color-primary-light: var(--primary-muted);
-  --color-primary-dark: var(--primary-dark);
-  --color-primary-glow: var(--primary-glow);
-  --color-text-primary: var(--text);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
-  --color-text-subtle: var(--text-subtle);
-  --color-success: var(--success);
-  --color-success-light: var(--success-light);
-  --color-warning: var(--warning);
-  --color-warning-light: var(--warning-light);
-  --color-error: var(--error);
-  --color-error-light: var(--error-light);
-  --color-muted: var(--text-muted);
 }
 
-/* ===== 3. Reset & Base ===== */
+/* ===== Reset & Base ===== */
 * {
   margin: 0;
   padding: 0;
@@ -114,38 +83,9 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  position: relative;
   overflow-x: hidden;
-}
-
-/* Blueprint grid overlay */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.04;
-  background-image:
-    linear-gradient(to right, rgba(26, 60, 43, 0.3) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(26, 60, 43, 0.3) 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-
-/* Remove old dot-grid — replaced by blueprint grid above */
-body::after {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0;
+  /* Blueprint grid via inline SVG — no compositing layer needed */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Cpath d='M20 0H0v20' fill='none' stroke='rgba(26,60,43,0.012)' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 /* Custom scrollbar — light theme */
@@ -166,7 +106,7 @@ body::after {
   background: rgba(26, 60, 43, 0.3);
 }
 
-/* ===== 4. Typography Utilities ===== */
+/* ===== Tipografia ===== */
 .title-xl {
   font-family: var(--font-display);
   font-size: 34px;
@@ -203,7 +143,7 @@ body::after {
   color: var(--text-muted);
 }
 
-/* ===== 5. App Layout ===== */
+/* ===== Layout ===== */
 .app {
   max-width: 800px;
   margin: 0 auto;
@@ -213,7 +153,7 @@ body::after {
   z-index: 1;
 }
 
-/* ===== 6. Header — Corner Marker TL ===== */
+/* ===== Header ===== */
 .header {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -243,7 +183,6 @@ body::after {
   opacity: 0.6;
 }
 
-/* Remove the old gold corner ornament — replaced by corner marker */
 .header::after {
   content: '';
   position: absolute;
@@ -286,7 +225,6 @@ body::after {
   text-transform: uppercase;
   color: var(--primary);
   line-height: 1.2;
-  /* Remove gradient text */
   background: none;
   -webkit-background-clip: unset;
   -webkit-text-fill-color: var(--primary);
@@ -303,7 +241,7 @@ body::after {
   text-transform: uppercase;
 }
 
-/* ===== 7. Status Bar ===== */
+/* ===== Barra de status ===== */
 .status-bar {
   display: flex;
   align-items: center;
@@ -315,7 +253,6 @@ body::after {
   margin-bottom: var(--space-6);
   transition: all var(--transition-base);
   animation: fadeSlideUp 0.5s ease-out 0.06s both;
-  /* Remove glassmorphism */
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -420,7 +357,7 @@ body::after {
   transform: translateY(0);
 }
 
-/* ===== 8. Error Panel ===== */
+/* ===== Painel de erro ===== */
 .error-panel {
   background: var(--surface);
   border: 1px solid rgba(220, 53, 69, 0.25);
@@ -485,7 +422,7 @@ body::after {
   border: 1px solid var(--border);
 }
 
-/* ===== 9. QR Code Section ===== */
+/* ===== QR Code ===== */
 .qr-container {
   display: flex;
   flex-direction: column;
@@ -501,7 +438,6 @@ body::after {
   animation: fadeSlideUp 0.5s ease-out 0.12s both;
 }
 
-/* Remove radial glow — clean background */
 .qr-container::before {
   content: '';
   position: absolute;
@@ -605,7 +541,7 @@ body::after {
   flex-shrink: 0;
 }
 
-/* ===== 10. Groups Section — Corner Marker TR ===== */
+/* ===== Seção de grupos ===== */
 .groups-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -691,15 +627,11 @@ body::after {
   animation: fadeSlideUp 0.3s ease-out both;
 }
 
-/* Staggered animation for group items */
-.group-container:nth-child(1) .group-item { animation-delay: 0.06s; }
-.group-container:nth-child(2) .group-item { animation-delay: 0.12s; }
-.group-container:nth-child(3) .group-item { animation-delay: 0.18s; }
-.group-container:nth-child(4) .group-item { animation-delay: 0.24s; }
-.group-container:nth-child(5) .group-item { animation-delay: 0.30s; }
-.group-container:nth-child(6) .group-item { animation-delay: 0.36s; }
-.group-container:nth-child(7) .group-item { animation-delay: 0.42s; }
-.group-container:nth-child(8) .group-item { animation-delay: 0.48s; }
+/* Staggered animation for group items (max 4) */
+.group-container:nth-child(1) .group-item { animation-delay: 0.05s; }
+.group-container:nth-child(2) .group-item { animation-delay: 0.10s; }
+.group-container:nth-child(3) .group-item { animation-delay: 0.15s; }
+.group-container:nth-child(4) .group-item { animation-delay: 0.20s; }
 
 /* Left accent border — green for mapped, coral for unmapped */
 .group-item::before {
@@ -846,7 +778,7 @@ body::after {
   gap: 8px;
 }
 
-/* ===== 11. Empty State ===== */
+/* ===== Estado vazio ===== */
 .empty-state {
   text-align: center;
   padding: var(--space-10) var(--space-5);
@@ -885,7 +817,7 @@ body::after {
   margin-bottom: 0;
 }
 
-/* ===== 12. Buttons ===== */
+/* ===== Botões ===== */
 .btn {
   padding: var(--space-2) var(--space-4);
   border: none;
@@ -961,7 +893,7 @@ body::after {
   height: 36px;
 }
 
-/* ===== 13. Send Section — Corner Marker BR ===== */
+/* ===== Seção de envio ===== */
 .send-section {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1059,8 +991,10 @@ body::after {
 
 .progress-fill {
   height: 100%;
+  width: 100%;
   background: var(--primary);
-  transition: width var(--transition-slow);
+  transform-origin: left;
+  transition: transform var(--transition-slow);
   border-radius: 0;
 }
 
@@ -1095,21 +1029,19 @@ body::after {
   animation: fadeSlideUp 0.3s ease-out both;
 }
 
-/* ===== 14. Modals ===== */
+/* ===== Modais ===== */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(247, 247, 245, 0.85);
+  background: rgba(247, 247, 245, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   animation: modalOverlayFade var(--transition-base) ease-out;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .modal {
@@ -1182,7 +1114,7 @@ body::after {
   margin-top: var(--space-5);
 }
 
-/* ===== 15. Form Inputs ===== */
+/* ===== Inputs ===== */
 .group-select,
 .settings-input,
 .new-group-input {
@@ -1248,7 +1180,7 @@ body::after {
   padding: var(--space-2);
 }
 
-/* ===== 16. New Group Form ===== */
+/* ===== Novo grupo ===== */
 .new-group-form {
   padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border);
@@ -1260,7 +1192,7 @@ body::after {
   gap: var(--space-2);
 }
 
-/* ===== Error List ===== */
+/* ===== Lista de erros ===== */
 .error-list {
   margin-top: var(--space-4);
   padding: var(--space-3);
@@ -1292,7 +1224,7 @@ body::after {
   padding-left: var(--space-4);
 }
 
-/* ===== File List ===== */
+/* ===== Lista de arquivos ===== */
 .group-files {
   background-color: var(--bg);
   border-top: 1px solid var(--border);
@@ -1374,7 +1306,7 @@ body::after {
   height: 14px;
 }
 
-/* ===== Drop Zone ===== */
+/* ===== Zona de arraste ===== */
 .drop-zone {
   border: 2px dashed var(--border-hover);
   border-radius: var(--radius-lg);
@@ -1409,7 +1341,7 @@ body::after {
   color: var(--text-subtle);
 }
 
-/* ===== Confirm Dialog ===== */
+/* ===== Diálogo de confirmação ===== */
 .confirm-dialog {
   text-align: center;
 }
@@ -1448,7 +1380,7 @@ body::after {
   justify-content: center;
 }
 
-/* ===== Settings Modal ===== */
+/* ===== Modal de configurações ===== */
 .settings-modal {
   min-width: 380px;
 }
@@ -1520,7 +1452,7 @@ body::after {
   padding-left: 32px;
 }
 
-/* ===== Skeleton Loading ===== */
+/* ===== Skeleton ===== */
 .skeleton {
   background: linear-gradient(
     90deg,
@@ -1538,7 +1470,7 @@ body::after {
   height: 256px;
 }
 
-/* ===== Group Mapper ===== */
+/* ===== Mapeador de grupos ===== */
 .group-mapper-info {
   display: flex;
   align-items: center;
@@ -1581,7 +1513,7 @@ body::after {
   flex-shrink: 0;
 }
 
-/* ===== Loading/Error States ===== */
+/* ===== Estados de carregamento/erro ===== */
 .loading-state,
 .error-state {
   display: flex;
@@ -1608,7 +1540,7 @@ body::after {
   height: 24px;
 }
 
-/* ===== 18. Keyframe Animations ===== */
+/* ===== Animações ===== */
 @keyframes fadeSlideUp {
   from {
     opacity: 0;
@@ -1634,30 +1566,9 @@ body::after {
   }
 }
 
-/* Keep goldPulseGlow as alias for subtlePulse (referenced in JSX) */
-@keyframes goldPulseGlow {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes successPop {
@@ -1682,22 +1593,6 @@ body::after {
   }
 }
 
-@keyframes ringPulse {
-  0% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
-
-@keyframes progressPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
 @keyframes progressStripes {
   from { background-position: 1rem 0; }
   to { background-position: 0 0; }
@@ -1708,72 +1603,7 @@ body::after {
   100% { background-position: 200% 0; }
 }
 
-/* Legacy animation name aliases */
-@keyframes success-pop {
-  0% { transform: scale(0); opacity: 0; }
-  50% { transform: scale(1.2); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes modal-overlay-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes modal-scale-up {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes ring-pulse {
-  0% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
-
-@keyframes progress-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-@keyframes progress-stripes {
-  from { background-position: 1rem 0; }
-  to { background-position: 0 0; }
-}
-
-@keyframes skeleton-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-/* Removed: emeraldShimmer (replaced by simple solid progress fill) */
-
-/* ===== 19. Reduced Motion ===== */
+/* ===== Movimento reduzido ===== */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

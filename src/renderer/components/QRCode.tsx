@@ -6,7 +6,7 @@ interface QRCodeProps {
   qrData: string;
 }
 
-export function QRCode({ qrData }: QRCodeProps) {
+export const QRCode = React.memo(function QRCode({ qrData }: QRCodeProps) {
   const [qrImage, setQrImage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export function QRCode({ qrData }: QRCodeProps) {
       });
       setQrImage(dataUrl);
     } catch (error) {
-      console.error('Failed to generate QR code:', error);
+      console.error('Falha ao gerar QR code:', error);
     }
   };
 
@@ -35,7 +35,7 @@ export function QRCode({ qrData }: QRCodeProps) {
         <h2>Conectar ao WhatsApp</h2>
         <div className="qr-instruction">
           <Smartphone size={24} className="qr-instruction-icon" />
-          <span>Escaneie o codigo QR abaixo com seu WhatsApp para conectar</span>
+          <span>Escaneie o código QR abaixo com seu WhatsApp para conectar</span>
         </div>
       </div>
 
@@ -53,4 +53,4 @@ export function QRCode({ qrData }: QRCodeProps) {
       </div>
     </div>
   );
-}
+});
