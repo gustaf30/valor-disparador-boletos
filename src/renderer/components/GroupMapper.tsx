@@ -30,8 +30,30 @@ export function GroupMapper({ folderName, onFetchGroups, onSave, onCancel }: Gro
   };
 
   useEffect(() => {
-    loadGroups();
-  }, []);
+    let cancelled = false;
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const fetchedGroups = await onFetchGroups();
+        if (!cancelled) setGroups(fetchedGroups);
+      } catch (err) {
+        if (!cancelled) setError('Erro ao carregar grupos. Tente novamente.');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [onFetchGroups]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
 
   const filteredGroups = groups.filter(g =>
     g.name.toLowerCase().includes(searchTerm.toLowerCase())

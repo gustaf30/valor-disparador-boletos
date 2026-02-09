@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { QRCode } from './components/QRCode';
 import { GroupList } from './components/GroupList';
@@ -7,7 +7,7 @@ import { Status } from './components/Status';
 import { GroupMapper } from './components/GroupMapper';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { Settings } from './components/Settings';
-import type { GroupStatus, SendProgress, WhatsAppGroup, Config } from '../shared/types';
+import type { GroupStatus, SendProgress, WhatsAppGroup, Config, AddFilesResult } from '../shared/types';
 import logo from './public/logo.jpg';
 
 declare global {
@@ -18,7 +18,7 @@ declare global {
       mapGroup: (folderName: string, whatsappId: string) => Promise<Config>;
       scanBoletos: () => Promise<GroupStatus[]>;
       selectFiles: (defaultPath?: string) => Promise<string[]>;
-      addFiles: (groupName: string, filePaths: string[]) => Promise<string[]>;
+      addFiles: (groupName: string, filePaths: string[]) => Promise<AddFilesResult>;
       deleteFile: (filePath: string) => Promise<boolean>;
       getGroupPath: (groupName: string) => Promise<string>;
       getWhatsAppGroups: () => Promise<WhatsAppGroup[]>;
@@ -72,6 +72,11 @@ function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const connectionStatusRef = useRef<ConnectionStatus>(connectionStatus);
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
+
   // Auto-mapeia pastas com grupos WhatsApp de mesmo nome
   // Não chama refreshGroups para evitar dependência circular
   const autoMapGroups = useCallback(async (folders: GroupStatus[], waGroups: WhatsAppGroup[]) => {
@@ -94,18 +99,6 @@ function App() {
     }
   }, []); // Sem dependências externas
 
-  const fetchWhatsAppGroups = useCallback(async () => {
-    if (!window.electronAPI) return;
-    try {
-      const waGroups = await window.electronAPI.getWhatsAppGroups();
-      setWhatsappGroups(waGroups);
-      return waGroups;
-    } catch (error) {
-      console.error('Failed to fetch WhatsApp groups:', error);
-      return [];
-    }
-  }, []);
-
   const refreshGroups = useCallback(async () => {
     if (!window.electronAPI) return;
     try {
@@ -115,15 +108,16 @@ function App() {
       ]);
       setGroups(scanned);
       setWhatsappGroups(waGroups);
-      // Auto-mapear novas pastas quando conectado
-      if (connectionStatus === 'connected' && waGroups.length > 0) {
+      // Auto-mapear novas pastas quando conectado (read status via ref)
+      if (connectionStatusRef.current === 'connected' && waGroups.length > 0) {
         await autoMapGroups(scanned, waGroups);
       }
     } catch (error) {
       console.error('Failed to refresh:', error);
     }
-  }, [connectionStatus, autoMapGroups]);
+  }, [autoMapGroups]);
 
+  // Effect 1: IPC listeners (mount once)
   useEffect(() => {
     if (!window.electronAPI) {
       console.error('electronAPI not available - preload script may not have loaded');
@@ -140,9 +134,10 @@ function App() {
       setQrCode(null);
       const [scanned, waGroups] = await Promise.all([
         window.electronAPI.scanBoletos(),
-        fetchWhatsAppGroups()
+        window.electronAPI.getWhatsAppGroups()
       ]);
       setGroups(scanned);
+      setWhatsappGroups(waGroups);
       if (waGroups && waGroups.length > 0) {
         await autoMapGroups(scanned, waGroups);
       }
@@ -168,11 +163,21 @@ function App() {
       setSendProgress(progress);
     });
 
-    const unsubComplete = window.electronAPI.onSendComplete((progress) => {
+    const unsubComplete = window.electronAPI.onSendComplete(async (progress) => {
       setSendProgress(progress);
       setIsSending(false);
       setLastSendTime(new Date());
-      refreshGroups();
+      // Inline refresh to avoid stale closure
+      try {
+        const [scanned, waGroups] = await Promise.all([
+          window.electronAPI.scanBoletos(),
+          window.electronAPI.getWhatsAppGroups()
+        ]);
+        setGroups(scanned);
+        setWhatsappGroups(waGroups);
+      } catch (error) {
+        console.error('Failed to refresh after send:', error);
+      }
     });
 
     // Initial scan
@@ -187,15 +192,15 @@ function App() {
         setConnectionStatus('connected');
         const [scanned, waGroups] = await Promise.all([
           window.electronAPI.scanBoletos(),
-          fetchWhatsAppGroups()
+          window.electronAPI.getWhatsAppGroups()
         ]);
         setGroups(scanned);
+        setWhatsappGroups(waGroups);
         if (waGroups && waGroups.length > 0) {
           await autoMapGroups(scanned, waGroups);
         }
       } else if (status === 'error') {
         setConnectionStatus('error');
-        // Buscar mensagem de erro se houver
         const initErr = await window.electronAPI.getInitError();
         if (initErr) {
           setErrorMessage(formatInitError(initErr));
@@ -203,7 +208,6 @@ function App() {
       } else if (status === 'disconnected') {
         setConnectionStatus('disconnected');
       }
-      // 'connecting' é o estado inicial, mantém como está
     });
 
     return () => {
@@ -215,26 +219,42 @@ function App() {
       unsubProgress();
       unsubComplete();
     };
-  }, [refreshGroups, fetchWhatsAppGroups, autoMapGroups]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Polling para detectar novas pastas e auto-mapear
+  // Effect 2: Polling para detectar novas pastas e auto-mapear
   useEffect(() => {
     if (connectionStatus !== 'connected') return;
 
-    const interval = setInterval(() => {
-      refreshGroups();
+    const interval = setInterval(async () => {
+      try {
+        const [scanned, waGroups] = await Promise.all([
+          window.electronAPI.scanBoletos(),
+          window.electronAPI.getWhatsAppGroups()
+        ]);
+        setGroups(scanned);
+        setWhatsappGroups(waGroups);
+        if (waGroups.length > 0) {
+          await autoMapGroups(scanned, waGroups);
+        }
+      } catch (error) {
+        console.error('Failed to poll:', error);
+      }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [connectionStatus, refreshGroups]);
+  }, [connectionStatus, autoMapGroups]);
 
   const handleAddFiles = async (groupName: string) => {
     try {
       const groupPath = await window.electronAPI.getGroupPath(groupName);
       const files = await window.electronAPI.selectFiles(groupPath);
       if (files.length > 0) {
-        await window.electronAPI.addFiles(groupName, files);
+        const result = await window.electronAPI.addFiles(groupName, files);
         await refreshGroups();
+        if (result.errors.length > 0) {
+          alert(`Alguns arquivos não puderam ser copiados:\n\n${result.errors.join('\n')}`);
+        }
       }
     } catch (error) {
       console.error('Failed to add files:', error);
@@ -366,7 +386,7 @@ function App() {
 
           {lastSendTime && (
             <p className="last-send">
-              Ultimo envio: {lastSendTime.toLocaleDateString('pt-BR')} {lastSendTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              Último envio: {lastSendTime.toLocaleDateString('pt-BR')} {lastSendTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
         </>
@@ -375,7 +395,7 @@ function App() {
       {mapperOpen && selectedGroup && (
         <GroupMapper
           folderName={selectedGroup}
-          onFetchGroups={fetchWhatsAppGroups}
+          onFetchGroups={() => window.electronAPI.getWhatsAppGroups()}
           onSave={handleSaveMapping}
           onCancel={() => {
             setMapperOpen(false);
@@ -388,6 +408,7 @@ function App() {
         <ConfirmDialog
           title="Confirmar Envio"
           message={`Deseja enviar ${filesToSend} boleto(s) para ${mappedGroupsWithFiles.length} grupo(s)?`}
+          deleteOriginalFiles={config?.deleteOriginalFiles}
           onConfirm={handleConfirmSend}
           onCancel={() => setConfirmOpen(false)}
         />

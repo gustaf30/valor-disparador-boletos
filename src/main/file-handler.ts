@@ -1,4 +1,5 @@
 import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
 import { GroupStatus, FileMapping } from '../shared/types';
 
@@ -60,14 +61,15 @@ export class FileHandler {
     }
   }
 
-  async addFiles(groupName: string, filePaths: string[]): Promise<FileMapping[]> {
+  async addFiles(groupName: string, filePaths: string[]): Promise<{ mappings: FileMapping[]; errors: string[] }> {
     const groupFolder = path.join(this.boletosFolder, groupName);
 
     if (!fs.existsSync(groupFolder)) {
       fs.mkdirSync(groupFolder, { recursive: true });
     }
 
-    const addedFiles: FileMapping[] = [];
+    const mappings: FileMapping[] = [];
+    const errors: string[] = [];
 
     for (const sourcePath of filePaths) {
       try {
@@ -84,32 +86,41 @@ export class FileHandler {
           counter++;
         }
 
-        fs.copyFileSync(sourcePath, finalPath);
-        addedFiles.push({ copied: finalPath, original: sourcePath });
+        await fsp.copyFile(sourcePath, finalPath);
+        mappings.push({ copied: finalPath, original: sourcePath });
       } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         console.error(`Error copying file ${sourcePath}:`, error);
+        errors.push(`${path.basename(sourcePath)}: ${msg}`);
       }
     }
 
-    return addedFiles;
+    return { mappings, errors };
   }
 
   async deleteOriginalFile(filePath: string): Promise<boolean> {
     try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        return true;
-      }
-      return false;
+      await fsp.access(filePath);
+      await fsp.unlink(filePath);
+      return true;
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
       console.error(`Error deleting original file ${filePath}:`, error);
       return false;
     }
   }
 
   async deleteFile(filePath: string): Promise<boolean> {
+    // Validate that the file is inside the boletos folder
+    const resolved = path.resolve(filePath);
+    const folderPrefix = path.resolve(this.boletosFolder) + path.sep;
+    if (!resolved.startsWith(folderPrefix)) {
+      console.error(`Refusing to delete file outside boletos folder: ${filePath}`);
+      return false;
+    }
+
     try {
-      fs.unlinkSync(filePath);
+      await fsp.unlink(resolved);
       return true;
     } catch (error) {
       console.error(`Error deleting file ${filePath}:`, error);

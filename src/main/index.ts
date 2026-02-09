@@ -2,57 +2,29 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import { WhatsAppClient } from './whatsapp';
 import { FileHandler } from './file-handler';
-import { IPC_CHANNELS, Config, SendProgress, WhatsAppConnectionState } from '../shared/types';
+import { loadConfig as _loadConfig, saveConfig as _saveConfig } from './config';
+import { IPC_CHANNELS, Config, SendProgress, WhatsAppConnectionState, AddFilesResult } from '../shared/types';
 import fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
 let whatsappClient: WhatsAppClient | null = null;
 let fileHandler: FileHandler | null = null;
 let initError: string | null = null;
+let isQuitting = false;
+let isSendingInProgress = false;
 
 // Mapa de arquivos copiados para originais (copiedPath -> originalPath)
 const fileOriginalMap = new Map<string, string>();
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
-
-function getDefaultConfig(): Config {
-  return {
-    boletosFolder: path.join(app.getPath('documents'), 'Valor Boletos'),
-    groups: {},
-    messageSingular: 'Segue boleto em anexo.',
-    messagePlural: 'Seguem os boletos em anexo.',
-    delayBetweenSends: 2000,
-    deleteOriginalFiles: false,
-  };
-}
+const DOCUMENTS_PATH = app.getPath('documents');
 
 function loadConfig(): Config {
-  try {
-    if (fs.existsSync(CONFIG_PATH)) {
-      const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
-      const loaded = JSON.parse(data);
-
-      // Migration: message -> messageSingular/messagePlural
-      if (loaded.message && !loaded.messageSingular) {
-        loaded.messageSingular = loaded.message;
-        loaded.messagePlural = loaded.message;
-        delete loaded.message;
-      }
-
-      return { ...getDefaultConfig(), ...loaded };
-    }
-  } catch (error) {
-    console.error('Error loading config:', error);
-  }
-  return getDefaultConfig();
+  return _loadConfig(CONFIG_PATH, DOCUMENTS_PATH);
 }
 
 function saveConfig(config: Config): void {
-  try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-  } catch (error) {
-    console.error('Error saving config:', error);
-  }
+  _saveConfig(CONFIG_PATH, config);
 }
 
 function createWindow(): void {
@@ -125,6 +97,7 @@ function setupIPC(config: Config): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.DIALOG_SELECT_FILES, async (_, defaultPath?: string) => {
+    if (!mainWindow) return [];
     const options: Electron.OpenDialogOptions = {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
@@ -132,21 +105,25 @@ function setupIPC(config: Config): void {
     if (defaultPath) {
       options.defaultPath = defaultPath;
     }
-    const result = await dialog.showOpenDialog(mainWindow!, options);
+    const result = await dialog.showOpenDialog(mainWindow, options);
     return result.filePaths;
   });
 
-  ipcMain.handle(IPC_CHANNELS.FILES_ADD, async (_, groupName: string, filePaths: string[]) => {
-    const mappings = await fileHandler?.addFiles(groupName, filePaths) ?? [];
+  ipcMain.handle(IPC_CHANNELS.FILES_ADD, async (_, groupName: string, filePaths: string[]): Promise<AddFilesResult> => {
+    const result = await fileHandler?.addFiles(groupName, filePaths) ?? { mappings: [], errors: [] };
     // Armazenar mapeamento para possível exclusão posterior
-    for (const mapping of mappings) {
+    for (const mapping of result.mappings) {
       fileOriginalMap.set(mapping.copied, mapping.original);
     }
-    return mappings.map(m => m.copied);
+    return { files: result.mappings.map(m => m.copied), errors: result.errors };
   });
 
   ipcMain.handle(IPC_CHANNELS.FILES_DELETE, async (_, filePath: string) => {
-    return fileHandler?.deleteFile(filePath) ?? false;
+    const result = await fileHandler?.deleteFile(filePath) ?? false;
+    if (result) {
+      fileOriginalMap.delete(filePath);
+    }
+    return result;
   });
 
   ipcMain.handle(IPC_CHANNELS.FILES_OPEN, async (_, filePath: string) => {
@@ -198,7 +175,13 @@ function setupIPC(config: Config): void {
       });
 
       // Iniciar novo cliente (vai gerar novo QR code)
-      await whatsappClient.initialize();
+      try {
+        await whatsappClient.initialize();
+      } catch (error) {
+        console.error('WhatsApp re-initialization failed after logout:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Erro ao reinicializar WhatsApp';
+        mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_INIT_ERROR, errorMsg);
+      }
     }
   });
 
@@ -208,100 +191,110 @@ function setupIPC(config: Config): void {
       throw new Error('App not initialized');
     }
 
-    const groups = await fileHandler.scanBoletos(config.groups);
+    if (isSendingInProgress) {
+      throw new Error('Envio já em andamento');
+    }
 
-    // Filtrar apenas grupos com arquivos e mapeamento
-    const groupsToSend = groups.filter(g => g.whatsappId && g.files.length > 0);
+    isSendingInProgress = true;
 
-    // Contar total de arquivos
-    const totalFiles = groupsToSend.reduce((sum, g) => sum + g.files.length, 0);
+    try {
+      const groups = await fileHandler.scanBoletos(config.groups);
 
-    const progress: SendProgress = {
-      total: totalFiles,
-      sent: 0,
-      currentFile: '',
-      currentGroup: '',
-      status: 'sending',
-      errors: [],
-    };
+      // Filtrar apenas grupos com arquivos e mapeamento
+      const groupsToSend = groups.filter(g => g.whatsappId && g.files.length > 0);
 
-    for (let groupIndex = 0; groupIndex < groupsToSend.length; groupIndex++) {
-      const group = groupsToSend[groupIndex];
-      const groupId = group.whatsappId!;
-      const groupName = group.name;
+      // Contar total de arquivos
+      const totalFiles = groupsToSend.reduce((sum, g) => sum + g.files.length, 0);
 
-      // 1. Selecionar mensagem (singular/plural)
-      const message = group.files.length > 1
-        ? config.messagePlural
-        : config.messageSingular;
+      const progress: SendProgress = {
+        total: totalFiles,
+        sent: 0,
+        currentFile: '',
+        currentGroup: '',
+        status: 'sending',
+        errors: [],
+      };
 
-      // 2. Enviar mensagem de texto UMA VEZ para o grupo
-      progress.status = 'sending';
-      progress.currentFile = '(mensagem)';
-      progress.currentGroup = groupName;
-      mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+      for (let groupIndex = 0; groupIndex < groupsToSend.length; groupIndex++) {
+        const group = groupsToSend[groupIndex];
+        const groupId = group.whatsappId!;
+        const groupName = group.name;
 
-      try {
-        await whatsappClient.sendMessage(groupId, message);
-      } catch (error) {
-        progress.status = 'error';
-        progress.errors.push({
-          file: '(mensagem)',
-          group: groupName,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
-        continue; // Pula para próximo grupo se falhar
-      }
+        // 1. Selecionar mensagem (singular/plural)
+        const message = group.files.length > 1
+          ? config.messagePlural
+          : config.messageSingular;
 
-      // 3. Enviar todos os arquivos do grupo SEM caption
-      for (const file of group.files) {
+        // 2. Enviar mensagem de texto UMA VEZ para o grupo
         progress.status = 'sending';
-        progress.currentFile = path.basename(file);
+        progress.currentFile = '(mensagem)';
         progress.currentGroup = groupName;
         mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
 
         try {
-          await whatsappClient.sendFile(groupId, file);
-
-          progress.status = 'deleting';
-          mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
-
-          // Excluir cópia
-          await fileHandler.deleteFile(file);
-
-          // Excluir original se configurado
-          if (config.deleteOriginalFiles) {
-            const originalPath = fileOriginalMap.get(file);
-            if (originalPath) {
-              await fileHandler.deleteOriginalFile(originalPath);
-              fileOriginalMap.delete(file);
-            }
-          }
-
-          progress.sent++;
+          await whatsappClient.sendMessage(groupId, message);
         } catch (error) {
           progress.status = 'error';
           progress.errors.push({
-            file: path.basename(file),
+            file: '(mensagem)',
             group: groupName,
             error: error instanceof Error ? error.message : 'Unknown error',
           });
           mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+          continue; // Pula para próximo grupo se falhar
+        }
+
+        // 3. Enviar todos os arquivos do grupo SEM caption
+        for (const file of group.files) {
+          progress.status = 'sending';
+          progress.currentFile = path.basename(file);
+          progress.currentGroup = groupName;
+          mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+
+          try {
+            await whatsappClient.sendFile(groupId, file);
+
+            progress.status = 'deleting';
+            mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+
+            // Excluir cópia
+            await fileHandler.deleteFile(file);
+
+            // Excluir original se configurado
+            if (config.deleteOriginalFiles) {
+              const originalPath = fileOriginalMap.get(file);
+              if (originalPath) {
+                await fileHandler.deleteOriginalFile(originalPath);
+                fileOriginalMap.delete(file);
+              }
+            }
+
+            progress.sent++;
+          } catch (error) {
+            progress.status = 'error';
+            progress.errors.push({
+              file: path.basename(file),
+              group: groupName,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+            mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+          }
+        }
+
+        // 4. Delay entre grupos (não entre arquivos)
+        if (groupIndex < groupsToSend.length - 1) {
+          progress.status = 'waiting';
+          mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
+          await new Promise(resolve => setTimeout(resolve, config.delayBetweenSends));
         }
       }
 
-      // 4. Delay entre grupos (não entre arquivos)
-      if (groupIndex < groupsToSend.length - 1) {
-        progress.status = 'waiting';
-        mainWindow?.webContents.send(IPC_CHANNELS.SEND_PROGRESS, progress);
-        await new Promise(resolve => setTimeout(resolve, config.delayBetweenSends));
-      }
+      progress.status = 'complete';
+      mainWindow?.webContents.send(IPC_CHANNELS.SEND_COMPLETE, progress);
+      return progress;
+    } finally {
+      isSendingInProgress = false;
     }
-
-    progress.status = 'complete';
-    mainWindow?.webContents.send(IPC_CHANNELS.SEND_COMPLETE, progress);
-    return progress;
   });
 }
 
@@ -355,6 +348,21 @@ app.on('activate', () => {
   }
 });
 
-app.on('quit', () => {
-  whatsappClient?.destroy();
+app.on('before-quit', async (e) => {
+  if (isQuitting) return;
+  isQuitting = true;
+  e.preventDefault();
+
+  try {
+    if (whatsappClient) {
+      await Promise.race([
+        whatsappClient.destroy(),
+        new Promise(resolve => setTimeout(resolve, 5000)),
+      ]);
+    }
+  } catch (error) {
+    console.error('Error destroying WhatsApp client:', error);
+  }
+
+  app.exit(0);
 });

@@ -1,8 +1,3 @@
-export interface GroupConfig {
-  name: string;
-  whatsappId: string;
-}
-
 export interface Config {
   boletosFolder: string;
   groups: Record<string, string>; // folder name -> whatsapp group id
@@ -30,12 +25,6 @@ export interface SendProgress {
   errors: Array<{ file: string; group: string; error: string }>;
 }
 
-export interface WhatsAppStatus {
-  connected: boolean;
-  authenticated: boolean;
-  qrCode: string | null;
-}
-
 export type WhatsAppConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export interface FileMapping {
@@ -43,10 +32,14 @@ export interface FileMapping {
   original: string;
 }
 
+export interface AddFilesResult {
+  files: string[];
+  errors: string[];
+}
+
 // IPC Channel names
 export const IPC_CHANNELS = {
   // WhatsApp
-  WHATSAPP_STATUS: 'whatsapp:status',
   WHATSAPP_QR: 'whatsapp:qr',
   WHATSAPP_READY: 'whatsapp:ready',
   WHATSAPP_DISCONNECTED: 'whatsapp:disconnected',

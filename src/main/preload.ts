@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS, Config, GroupStatus, SendProgress, WhatsAppGroup, WhatsAppConnectionState } from '../shared/types';
+import { IPC_CHANNELS, Config, GroupStatus, SendProgress, WhatsAppGroup, WhatsAppConnectionState, AddFilesResult } from '../shared/types';
 
 type IpcCallback<T> = (data: T) => void;
 
@@ -15,7 +15,7 @@ const api = {
   scanBoletos: (): Promise<GroupStatus[]> => ipcRenderer.invoke(IPC_CHANNELS.FILES_SCAN),
   selectFiles: (defaultPath?: string): Promise<string[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SELECT_FILES, defaultPath),
-  addFiles: (groupName: string, filePaths: string[]): Promise<string[]> =>
+  addFiles: (groupName: string, filePaths: string[]): Promise<AddFilesResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.FILES_ADD, groupName, filePaths),
   deleteFile: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.FILES_DELETE, filePath),

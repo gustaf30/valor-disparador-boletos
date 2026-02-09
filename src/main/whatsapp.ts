@@ -52,10 +52,6 @@ export class WhatsAppClient extends EventEmitter {
       this.emit('ready');
     });
 
-    this.client.on('authenticated', () => {
-      this.emit('authenticated');
-    });
-
     this.client.on('auth_failure', (msg) => {
       this.isReady = false;
       this.connectionState = 'error';

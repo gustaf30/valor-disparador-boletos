@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, X } from 'lucide-react';
 import type { Config } from '../../shared/types';
 
@@ -13,10 +13,25 @@ export function Settings({ config, onSave, onClose }: SettingsProps) {
   const [messagePlural, setMessagePlural] = useState(config.messagePlural);
   const [deleteOriginalFiles, setDeleteOriginalFiles] = useState(config.deleteOriginalFiles ?? false);
 
+  const canSave = messageSingular.trim().length > 0 && messagePlural.trim().length > 0;
+
   const handleSave = () => {
-    onSave({ messageSingular, messagePlural, deleteOriginalFiles });
+    if (!canSave) return;
+    onSave({
+      messageSingular: messageSingular.trim(),
+      messagePlural: messagePlural.trim(),
+      deleteOriginalFiles,
+    });
     onClose();
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -58,10 +73,10 @@ export function Settings({ config, onSave, onClose }: SettingsProps) {
               checked={deleteOriginalFiles}
               onChange={(e) => setDeleteOriginalFiles(e.target.checked)}
             />
-            <span className="checkbox-text">Excluir arquivos originais apos envio</span>
+            <span className="checkbox-text">Excluir arquivos originais após envio</span>
           </label>
           <span className="helper-text">
-            Quando ativado, os arquivos PDF originais selecionados via "Adicionar" serao excluidos apos o envio bem-sucedido.
+            Quando ativado, os arquivos PDF originais selecionados via "Adicionar" serão excluídos após o envio bem-sucedido.
           </span>
         </div>
 
@@ -70,7 +85,7 @@ export function Settings({ config, onSave, onClose }: SettingsProps) {
             <X size={16} className="btn-icon" />
             Cancelar
           </button>
-          <button className="btn btn-primary" onClick={handleSave}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
             Salvar
           </button>
         </div>

@@ -28,7 +28,7 @@ function getStatusMessage(progress: SendProgress): string {
 }
 
 export function SendButton({ totalFiles, disabled, isSending, progress, onClick }: SendButtonProps) {
-  const percentage = progress ? Math.round((progress.sent / progress.total) * 100) : 0;
+  const percentage = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
   const isComplete = progress?.status === 'complete';
 
   return (

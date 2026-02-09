@@ -51,11 +51,16 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
   };
 
   const handleCreateGroup = () => {
-    if (newGroupName.trim()) {
-      onAddFiles(newGroupName.trim());
-      setNewGroupName('');
-      setShowNewGroup(false);
+    const name = newGroupName.trim();
+    if (!name) return;
+    // Reject Windows-invalid folder name characters
+    if (/[<>:"/\\|?*]/.test(name)) {
+      alert('Nome inválido. Não use os caracteres: < > : " / \\ | ? *');
+      return;
     }
+    onAddFiles(name);
+    setNewGroupName('');
+    setShowNewGroup(false);
   };
 
   const handleDragOver = useCallback((e: React.DragEvent, groupName: string) => {
@@ -79,9 +84,17 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
     const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
 
     if (pdfFiles.length > 0) {
-      const paths = pdfFiles.map(f => f.path);
-      await window.electronAPI.addFiles(groupName, paths);
-      onRefresh();
+      try {
+        const paths = pdfFiles.map(f => f.path);
+        const result = await window.electronAPI.addFiles(groupName, paths);
+        if (result.errors.length > 0) {
+          alert(`Alguns arquivos não puderam ser copiados:\n\n${result.errors.join('\n')}`);
+        }
+      } catch (error) {
+        console.error('Failed to add dropped files:', error);
+      } finally {
+        onRefresh();
+      }
     }
   }, [onRefresh]);
 
@@ -135,7 +148,7 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
           <FolderOpen className="empty-state-illustration" strokeWidth={1} />
           <h3>Nenhum grupo configurado</h3>
           <p>Clique em "Novo Grupo" para criar uma pasta</p>
-          <p>ou arraste arquivos PDF para a area abaixo.</p>
+          <p>ou arraste arquivos PDF para a área abaixo.</p>
         </div>
       ) : (
         groups.map((group) => (
@@ -173,7 +186,7 @@ export function GroupList({ groups, whatsappGroups, onAddFiles, onMapGroup, onRe
                   {!group.whatsappId && (
                     <span className="group-unmapped">
                       <AlertTriangle size={12} className="badge-icon" />
-                      Nao vinculado
+                      Não vinculado
                     </span>
                   )}
                 </div>

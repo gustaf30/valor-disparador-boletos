@@ -1,14 +1,23 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AlertTriangle, Send } from 'lucide-react';
 
 interface ConfirmDialogProps {
   title: string;
   message: string;
+  deleteOriginalFiles?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, message, deleteOriginalFiles, onConfirm, onCancel }: ConfirmDialogProps) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal confirm-dialog" onClick={(e) => e.stopPropagation()}>
@@ -18,7 +27,8 @@ export function ConfirmDialog({ title, message, onConfirm, onCancel }: ConfirmDi
         </div>
         <p>{message}</p>
         <p className="helper-text" style={{ paddingLeft: 0, marginTop: 12 }}>
-          Os arquivos serao excluidos apos o envio bem-sucedido.
+          As cópias na pasta de boletos serão removidas após o envio.
+          {deleteOriginalFiles && ' Os arquivos originais também serão excluídos.'}
         </p>
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>
