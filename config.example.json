@@ -4,6 +4,9 @@
     "VALOR": "120363xxxxx@g.us",
     "CLIENTE_A": "120363yyyyy@g.us"
   },
-  "message": "Segue boleto em anexo.",
-  "delayBetweenSends": 2000
+  "messageSingular": "Segue boleto em anexo.",
+  "messagePlural": "Seguem boletos em anexo.",
+  "delayBetweenSends": 2000,
+  "deleteOriginalFiles": false,
+  "defaultSourceFolder": ""
 }

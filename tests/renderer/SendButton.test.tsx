@@ -88,7 +88,7 @@ describe('SendButton', () => {
       />,
     );
     const fill = document.querySelector('.progress-fill') as HTMLElement;
-    expect(fill.style.width).toBe('0%');
+    expect(fill.style.transform).toBe('scaleX(0)');
   });
 
   // 8
@@ -101,7 +101,7 @@ describe('SendButton', () => {
       />,
     );
     const fill = document.querySelector('.progress-fill') as HTMLElement;
-    expect(fill.style.width).toBe('30%');
+    expect(fill.style.transform).toBe('scaleX(0.3)');
   });
 
   // 9

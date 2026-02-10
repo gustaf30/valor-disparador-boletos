@@ -96,6 +96,7 @@ export const GroupMapper = React.memo(function GroupMapper({ folderName, onFetch
                 className="btn btn-icon-only btn-secondary refresh-btn"
                 onClick={() => loadGroups()}
                 title="Atualizar lista"
+                aria-label="Atualizar lista"
                 disabled={isLoading}
               >
                 <RefreshCw size={16} />

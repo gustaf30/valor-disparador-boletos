@@ -96,7 +96,7 @@ export class WhatsAppClient extends EventEmitter {
 
     this.sock.ev.on('creds.update', saveCreds);
 
-    this.sock.ev.on('connection.update', (update: any) => {
+    this.sock.ev.on('connection.update', (update: Partial<{ connection: string; lastDisconnect: { error: Error }; qr: string }>) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -114,7 +114,8 @@ export class WhatsAppClient extends EventEmitter {
 
       if (connection === 'close') {
         this.isReady = false;
-        const statusCode = (lastDisconnect?.error as any)?.output?.statusCode as number | undefined;
+        const error = lastDisconnect?.error as Error & { output?: { statusCode?: number } } | undefined;
+        const statusCode = error?.output?.statusCode;
 
         this.handleDisconnect(statusCode);
       }
@@ -196,10 +197,13 @@ export class WhatsAppClient extends EventEmitter {
 
     try {
       const groupsObj = await this.sock.groupFetchAllParticipating();
-      return Object.entries(groupsObj).map(([jid, metadata]: [string, any]) => ({
-        id: jid,
-        name: metadata.subject,
-      }));
+      return Object.entries(groupsObj).map(([jid, metadata]) => {
+        const meta = metadata as Record<string, unknown>;
+        return {
+          id: jid,
+          name: (meta.subject as string) || jid,
+        };
+      });
     } catch (error) {
       console.error('Failed to get groups:', error);
       return [];

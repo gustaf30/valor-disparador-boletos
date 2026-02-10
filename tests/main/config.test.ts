@@ -126,6 +126,7 @@ describe('config', () => {
   it('round-trip save→load preserva todos os campos', () => {
     const cfg: Config = {
       boletosFolder: 'Z:\\boletos',
+      defaultSourceFolder: '',
       groups: { x: 'y', z: 'w' },
       messageSingular: 'S',
       messagePlural: 'P',

@@ -130,6 +130,17 @@ function setupIPC(config: Config): void {
   ipcMain.handle(IPC_CHANNELS.CONFIG_GET, () => config);
 
   ipcMain.handle(IPC_CHANNELS.CONFIG_SET, (_, newConfig: Partial<Config>) => {
+    // Validar campos críticos antes de aplicar
+    if ('delayBetweenSends' in newConfig) {
+      if (typeof newConfig.delayBetweenSends !== 'number' || newConfig.delayBetweenSends < 0) {
+        throw new Error('delayBetweenSends deve ser um número >= 0');
+      }
+    }
+    if ('boletosFolder' in newConfig) {
+      if (typeof newConfig.boletosFolder !== 'string' || newConfig.boletosFolder.trim() === '') {
+        throw new Error('boletosFolder não pode ser vazio');
+      }
+    }
     Object.assign(config, newConfig);
     saveConfig(config);
     fileHandler?.setBoletosFolder(config.boletosFolder);
@@ -212,10 +223,21 @@ function setupIPC(config: Config): void {
 
   ipcMain.handle(IPC_CHANNELS.WHATSAPP_LOGOUT, async () => {
     if (whatsappClient) {
-      // Faz logout (limpa sessão)
-      await whatsappClient.logout();
-      // Destrói o cliente antigo
-      await whatsappClient.destroy();
+      try {
+        // Faz logout (limpa sessão)
+        await whatsappClient.logout();
+      } catch (error) {
+        console.error('WhatsApp logout failed:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Erro ao fazer logout';
+        mainWindow?.webContents.send(IPC_CHANNELS.WHATSAPP_INIT_ERROR, errorMsg);
+      }
+
+      try {
+        // Destrói o cliente antigo
+        await whatsappClient.destroy();
+      } catch (error) {
+        console.error('WhatsApp destroy failed after logout:', error);
+      }
 
       // Criar novo cliente para permitir novo login
       whatsappClient = new WhatsAppClient(app.getPath('userData'));
@@ -311,15 +333,30 @@ function setupIPC(config: Config): void {
             sendThrottledProgress(progress);
 
             // Excluir cópia
-            await fileHandler.deleteFile(file);
+            const deleted = await fileHandler.deleteFile(file);
+            if (!deleted) {
+              progress.errors.push({
+                file: path.basename(file),
+                group: groupName,
+                error: 'Falha ao excluir cópia',
+              });
+            }
 
             // Excluir original se configurado
             if (config.deleteOriginalFiles) {
               const originalPath = fileOriginalMap.get(file);
               if (originalPath) {
-                await fileHandler.deleteOriginalFile(originalPath);
-                fileOriginalMap.delete(file);
-                saveFileMap();
+                const deletedOriginal = await fileHandler.deleteOriginalFile(originalPath);
+                if (deletedOriginal) {
+                  fileOriginalMap.delete(file);
+                  saveFileMap();
+                } else {
+                  progress.errors.push({
+                    file: path.basename(file),
+                    group: groupName,
+                    error: 'Falha ao excluir arquivo original',
+                  });
+                }
               }
             }
 

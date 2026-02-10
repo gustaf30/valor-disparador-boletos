@@ -126,6 +126,7 @@ const GroupItem = React.memo(function GroupItem({
                 className="btn-delete"
                 onClick={() => onDeleteFile(group.name, filePath)}
                 title="Remover arquivo"
+                aria-label="Remover arquivo"
               >
                 <X size={14} className="delete-icon" />
               </button>
@@ -215,6 +216,8 @@ export const GroupList = React.memo(function GroupList({ groups, whatsappGroups,
         }
       } catch (error) {
         console.error('Falha ao adicionar arquivos arrastados:', error);
+        const msg = error instanceof Error ? error.message : String(error);
+        alert(`Erro ao adicionar arquivos: ${msg}`);
       } finally {
         onRefresh();
       }

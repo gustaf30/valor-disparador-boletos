@@ -114,12 +114,19 @@ export class FileHandler {
   }
 
   async deleteOriginalFile(filePath: string): Promise<boolean> {
+    // Validação: deve ser caminho absoluto para evitar travessia relativa
+    if (!path.isAbsolute(filePath)) {
+      console.error(`Refusing to delete non-absolute path: ${filePath}`);
+      return false;
+    }
+
     try {
       const stat = await fsp.stat(filePath);
       if (!stat.isFile()) {
         console.error(`Refusing to delete non-file: ${filePath}`);
         return false;
       }
+      console.log(`Deleting original file: ${filePath}`);
       await fsp.unlink(filePath);
       return true;
     } catch (error) {

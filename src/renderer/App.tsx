@@ -360,6 +360,7 @@ function App() {
           className="btn btn-icon-only btn-secondary"
           onClick={handleSettingsOpen}
           title="Configurar mensagens de envio"
+          aria-label="Configurações"
         >
           <SettingsIcon size={18} />
         </button>

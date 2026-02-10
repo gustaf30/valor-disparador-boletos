@@ -95,6 +95,7 @@ export const Settings = React.memo(function Settings({ config, onSave, onClose }
                 className="btn btn-secondary"
                 onClick={() => setDefaultSourceFolder('')}
                 title="Limpar (usar pasta do grupo)"
+                aria-label="Limpar (usar pasta do grupo)"
                 type="button"
               >
                 <Trash2 size={16} />

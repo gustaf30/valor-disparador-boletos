@@ -50,7 +50,7 @@ export const Status = React.memo(function Status({ status, errorMessage, sendPro
       )}
       <div className="status-spacer" />
       {status === 'connected' && onLogout && (
-        <button className="btn-logout" onClick={onLogout} title="Desconectar do WhatsApp">
+        <button className="btn-logout" onClick={onLogout} title="Desconectar do WhatsApp" aria-label="Desconectar do WhatsApp">
           <LogOut size={14} />
           Sair
         </button>

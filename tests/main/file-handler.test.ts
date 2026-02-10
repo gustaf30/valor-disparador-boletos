@@ -211,6 +211,18 @@ describe('FileHandler', () => {
   });
 
   // 21
+  it('deleteOriginalFile recusa caminho relativo', async () => {
+    handler = new FileHandler(boletosDir);
+    const target = path.join(tmpDir, 'relative.pdf');
+    fs.writeFileSync(target, 'content');
+
+    const result = await handler.deleteOriginalFile('relative.pdf');
+    expect(result).toBe(false);
+    // Arquivo original não deve ser deletado
+    expect(fs.existsSync(target)).toBe(true);
+  });
+
+  // 22
   it('getPdfFiles é case-insensitive (.PDF, .Pdf, .pdf)', async () => {
     handler = new FileHandler(boletosDir);
     const groupDir = path.join(boletosDir, 'GrupoA');
