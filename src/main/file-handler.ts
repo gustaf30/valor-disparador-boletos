@@ -68,7 +68,12 @@ export class FileHandler {
   async addFiles(groupName: string, filePaths: string[]): Promise<{ mappings: FileMapping[]; errors: string[] }> {
     const groupFolder = path.join(this.boletosFolder, groupName);
 
-    await fsp.mkdir(groupFolder, { recursive: true });
+    try {
+      await fsp.mkdir(groupFolder, { recursive: true });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return { mappings: [], errors: [`Não foi possível criar a pasta "${groupName}": ${msg}`] };
+    }
 
     const mappings: FileMapping[] = [];
     const errors: string[] = [];
@@ -110,7 +115,11 @@ export class FileHandler {
 
   async deleteOriginalFile(filePath: string): Promise<boolean> {
     try {
-      await fsp.access(filePath);
+      const stat = await fsp.stat(filePath);
+      if (!stat.isFile()) {
+        console.error(`Refusing to delete non-file: ${filePath}`);
+        return false;
+      }
       await fsp.unlink(filePath);
       return true;
     } catch (error) {
@@ -172,6 +181,7 @@ export class FileHandler {
             });
             this.watchers.push(watcher);
           } catch (err) {
+            console.error(`Failed to watch subdirectory ${entry.name}:`, err);
           }
         }
       }

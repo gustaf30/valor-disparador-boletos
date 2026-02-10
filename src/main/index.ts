@@ -33,8 +33,37 @@ function sendImmediateProgress(progress: SendProgress): void {
   lastProgressSendTime = Date.now();
 }
 
-// Mapa de arquivos copiados para originais (copiedPath -> originalPath)
+// Mapa de arquivos copiados para originais (copiedPath -> originalPath), persistido em disco
+const FILE_MAP_PATH = path.join(app.getPath('userData'), 'file-map.json');
 const fileOriginalMap = new Map<string, string>();
+
+function loadFileMap(): void {
+  try {
+    if (fs.existsSync(FILE_MAP_PATH)) {
+      const data = JSON.parse(fs.readFileSync(FILE_MAP_PATH, 'utf-8'));
+      for (const [copied, original] of Object.entries(data)) {
+        // Só carregar se o arquivo copiado ainda existir no disco
+        if (fs.existsSync(copied)) {
+          fileOriginalMap.set(copied, original as string);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load file map:', error);
+  }
+}
+
+function saveFileMap(): void {
+  try {
+    const obj: Record<string, string> = {};
+    for (const [k, v] of fileOriginalMap) {
+      obj[k] = v;
+    }
+    fs.writeFileSync(FILE_MAP_PATH, JSON.stringify(obj, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Failed to save file map:', error);
+  }
+}
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const DOCUMENTS_PATH = app.getPath('documents');
@@ -131,12 +160,22 @@ function setupIPC(config: Config): void {
     return result.filePaths;
   });
 
+  ipcMain.handle(IPC_CHANNELS.DIALOG_SELECT_FOLDER, async (_, defaultPath?: string) => {
+    if (!mainWindow) return '';
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      defaultPath: defaultPath || undefined,
+    });
+    return result.filePaths[0] || '';
+  });
+
   ipcMain.handle(IPC_CHANNELS.FILES_ADD, async (_, groupName: string, filePaths: string[]): Promise<AddFilesResult> => {
     const result = await fileHandler?.addFiles(groupName, filePaths) ?? { mappings: [], errors: [] };
     // Armazenar mapeamento para possível exclusão posterior
     for (const mapping of result.mappings) {
       fileOriginalMap.set(mapping.copied, mapping.original);
     }
+    saveFileMap();
     return { files: result.mappings.map(m => m.copied), errors: result.errors };
   });
 
@@ -144,6 +183,7 @@ function setupIPC(config: Config): void {
     const result = await fileHandler?.deleteFile(filePath) ?? false;
     if (result) {
       fileOriginalMap.delete(filePath);
+      saveFileMap();
     }
     return result;
   });
@@ -239,12 +279,21 @@ function setupIPC(config: Config): void {
         try {
           await whatsappClient.sendMessage(groupId, message);
         } catch (error) {
+          const errMsg = error instanceof Error ? error.message : 'Erro desconhecido';
           progress.status = 'error';
           progress.errors.push({
             file: '(mensagem)',
             group: groupName,
-            error: error instanceof Error ? error.message : 'Erro desconhecido',
+            error: errMsg,
           });
+          // Marcar todos os arquivos do grupo como pulados
+          for (const file of group.files) {
+            progress.errors.push({
+              file: path.basename(file),
+              group: groupName,
+              error: `Grupo pulado — falha ao enviar mensagem: ${errMsg}`,
+            });
+          }
           sendImmediateProgress(progress);
           continue;
         }
@@ -270,6 +319,7 @@ function setupIPC(config: Config): void {
               if (originalPath) {
                 await fileHandler.deleteOriginalFile(originalPath);
                 fileOriginalMap.delete(file);
+                saveFileMap();
               }
             }
 
@@ -326,6 +376,7 @@ function startFileWatcher(): void {
 }
 
 app.whenReady().then(async () => {
+  loadFileMap();
   const config = loadConfig();
 
   if (!fs.existsSync(config.boletosFolder)) {

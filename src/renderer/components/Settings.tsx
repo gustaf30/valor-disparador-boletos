@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, X } from 'lucide-react';
+import { Settings as SettingsIcon, X, FolderOpen, Trash2 } from 'lucide-react';
 import type { Config } from '../../shared/types';
 
 interface SettingsProps {
@@ -12,6 +12,7 @@ export const Settings = React.memo(function Settings({ config, onSave, onClose }
   const [messageSingular, setMessageSingular] = useState(config.messageSingular);
   const [messagePlural, setMessagePlural] = useState(config.messagePlural);
   const [deleteOriginalFiles, setDeleteOriginalFiles] = useState(config.deleteOriginalFiles ?? false);
+  const [defaultSourceFolder, setDefaultSourceFolder] = useState(config.defaultSourceFolder ?? '');
 
   const canSave = messageSingular.trim().length > 0 && messagePlural.trim().length > 0;
 
@@ -21,6 +22,7 @@ export const Settings = React.memo(function Settings({ config, onSave, onClose }
       messageSingular: messageSingular.trim(),
       messagePlural: messagePlural.trim(),
       deleteOriginalFiles,
+      defaultSourceFolder,
     });
     onClose();
   };
@@ -63,6 +65,45 @@ export const Settings = React.memo(function Settings({ config, onSave, onClose }
             onChange={(e) => setMessagePlural(e.target.value)}
             placeholder="Seguem os boletos em anexo."
           />
+        </div>
+
+        <div className="form-group">
+          <label>Diretório padrão para busca de boletos:</label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="settings-input"
+              value={defaultSourceFolder}
+              readOnly
+              placeholder="(pasta do grupo)"
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                const folder = await window.electronAPI.selectFolder(defaultSourceFolder || undefined);
+                if (folder) setDefaultSourceFolder(folder);
+              }}
+              title="Procurar pasta"
+              type="button"
+            >
+              <FolderOpen size={16} className="btn-icon" />
+              Procurar
+            </button>
+            {defaultSourceFolder && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => setDefaultSourceFolder('')}
+                title="Limpar (usar pasta do grupo)"
+                type="button"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+          <span className="helper-text">
+            Pasta que abre ao clicar em "Adicionar". Se vazio, abre na pasta do grupo.
+          </span>
         </div>
 
         <div className="form-group checkbox-group">

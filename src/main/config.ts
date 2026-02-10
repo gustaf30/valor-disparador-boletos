@@ -10,6 +10,7 @@ export function getDefaultConfig(documentsPath: string): Config {
     messagePlural: 'Seguem os boletos em anexo.',
     delayBetweenSends: 2000,
     deleteOriginalFiles: false,
+    defaultSourceFolder: '',
   };
 }
 

@@ -17,6 +17,7 @@ export class WhatsAppClient extends EventEmitter {
   private lastError: string | null = null;
   private reconnectAttempts: number = 0;
   private destroyed: boolean = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(dataPath: string) {
     super();
@@ -63,6 +64,13 @@ export class WhatsAppClient extends EventEmitter {
 
   private async connectSocket(): Promise<void> {
     if (this.destroyed) return;
+
+    // Limpar socket anterior para evitar listeners duplicados
+    if (this.sock) {
+      this.sock.ev.removeAllListeners();
+      this.sock.end(undefined);
+      this.sock = null;
+    }
 
     const baileys = await import('@whiskeysockets/baileys');
     const makeWASocket = baileys.default;
@@ -162,7 +170,8 @@ export class WhatsAppClient extends EventEmitter {
     this.connectionState = 'connecting';
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
 
-    setTimeout(async () => {
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
       if (this.destroyed) return;
       try {
         await this.connectSocket();
@@ -203,6 +212,10 @@ export class WhatsAppClient extends EventEmitter {
     }
 
     try {
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`Arquivo não encontrado: ${path.basename(filePath)}`);
+      }
+
       const fileName = path.basename(filePath);
 
       await this.sock.sendMessage(groupId, {
@@ -232,15 +245,27 @@ export class WhatsAppClient extends EventEmitter {
   async destroy(): Promise<void> {
     this.destroyed = true;
     this.isReady = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     try {
-      this.sock?.end(undefined);
+      if (this.sock) {
+        this.sock.ev.removeAllListeners();
+        this.sock.end(undefined);
+      }
     } catch (error) {
       console.error('Error destroying client:', error);
     }
     this.sock = null;
+    this.removeAllListeners();
   }
 
   async logout(): Promise<void> {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     try {
       if (this.sock) {
         await this.sock.logout();

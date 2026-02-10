@@ -33,6 +33,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.FILES_OPEN, filePath),
   getGroupPath: (groupName: string): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET_GROUP_PATH, groupName),
+  selectFolder: (defaultPath?: string): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SELECT_FOLDER, defaultPath),
 
   // Observador de arquivos
   onFilesChanged: onEvent<void>(IPC_CHANNELS.FILES_CHANGED),

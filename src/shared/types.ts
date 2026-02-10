@@ -5,6 +5,7 @@ export interface Config {
   messagePlural: string;
   delayBetweenSends: number;
   deleteOriginalFiles: boolean;
+  defaultSourceFolder: string;
 }
 
 export interface GroupStatus {
@@ -70,6 +71,7 @@ export const IPC_CHANNELS = {
 
   // Diálogo
   DIALOG_SELECT_FILES: 'dialog:select-files',
+  DIALOG_SELECT_FOLDER: 'dialog:select-folder',
 } as const;
 
 export interface WhatsAppGroup {

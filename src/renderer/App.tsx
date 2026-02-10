@@ -21,6 +21,7 @@ declare global {
       addFiles: (groupName: string, filePaths: string[]) => Promise<AddFilesResult>;
       deleteFile: (filePath: string) => Promise<boolean>;
       getGroupPath: (groupName: string) => Promise<string>;
+      selectFolder: (defaultPath?: string) => Promise<string>;
       getWhatsAppGroups: () => Promise<WhatsAppGroup[]>;
       getWhatsAppStatus: () => Promise<WhatsAppConnectionState>;
       getInitError: () => Promise<string | null>;
@@ -88,14 +89,19 @@ function App() {
 
   // Busca grupos e auto-mapeia (usado em vários callbacks)
   const fetchAndAutoMap = useCallback(async (status?: WhatsAppConnectionState) => {
-    const [scanned, waGroups] = await Promise.all([
-      debouncedScan(),
-      window.electronAPI.getWhatsAppGroups()
-    ]);
+    // Scan de arquivos roda primeiro e atualiza UI independente do WhatsApp
+    const scanned = await debouncedScan();
     setGroups(scanned);
-    setWhatsappGroups(waGroups);
-    const isConnected = status === 'connected';
-    if (isConnected && waGroups.length > 0) {
+
+    let waGroups: WhatsAppGroup[] = [];
+    try {
+      waGroups = await window.electronAPI.getWhatsAppGroups();
+      setWhatsappGroups(waGroups);
+    } catch (err) {
+      console.error('Falha ao buscar grupos WhatsApp:', err);
+    }
+
+    if (status === 'connected' && waGroups.length > 0) {
       await autoMapGroups(scanned, waGroups);
     }
   }, [autoMapGroups, debouncedScan]);
@@ -157,14 +163,16 @@ function App() {
       setIsSending(false);
       setLastSendTime(new Date());
       try {
-        const [scanned, waGroups] = await Promise.all([
-          debouncedScan(),
-          window.electronAPI.getWhatsAppGroups()
-        ]);
+        const scanned = await debouncedScan();
         setGroups(scanned);
-        setWhatsappGroups(waGroups);
       } catch (error) {
         console.error('Falha ao atualizar após envio:', error);
+      }
+      try {
+        const waGroups = await window.electronAPI.getWhatsAppGroups();
+        setWhatsappGroups(waGroups);
+      } catch (error) {
+        console.error('Falha ao buscar grupos WhatsApp após envio:', error);
       }
     });
 
@@ -229,10 +237,11 @@ function App() {
 
   const handleAddFiles = useCallback(async (groupName: string) => {
     try {
-      const groupPath = await window.electronAPI.getGroupPath(groupName);
-      const files = await window.electronAPI.selectFiles(groupPath);
+      const defaultPath = config?.defaultSourceFolder || await window.electronAPI.getGroupPath(groupName);
+      const files = await window.electronAPI.selectFiles(defaultPath);
       if (files.length > 0) {
         const result = await window.electronAPI.addFiles(groupName, files);
+        scanInFlightRef.current = null; // Forçar scan fresco
         await refreshGroups();
         if (result.errors.length > 0) {
           alert(`Alguns arquivos não puderam ser copiados:\n\n${result.errors.join('\n')}`);
@@ -240,8 +249,10 @@ function App() {
       }
     } catch (error) {
       console.error('Falha ao adicionar arquivos:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      alert(`Erro ao adicionar boletos: ${msg}`);
     }
-  }, [refreshGroups]);
+  }, [config?.defaultSourceFolder, refreshGroups]);
 
   const handleDeleteFile = useCallback(async (groupName: string, filePath: string) => {
     try {
@@ -283,6 +294,8 @@ function App() {
     } catch (error) {
       console.error('Falha ao enviar:', error);
       setIsSending(false);
+      const msg = error instanceof Error ? error.message : String(error);
+      alert(`Erro ao enviar boletos: ${msg}`);
     }
   }, []);
 
